@@ -42,6 +42,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val syncState: StateFlow<SyncState> = repo.sync
 
+    val log: StateFlow<List<com.balandman.liftlog.data.LogEntry>> = repo.log
+
     val pendingCount: StateFlow<Int> = repo.log
         .map { entries -> entries.count { !it.synced } }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
@@ -81,10 +83,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun rename(machineId: String, name: String) = repo.rename(machineId, name)
 
-    fun setIcon(machineId: String, iconKey: String) = repo.setIcon(machineId, iconKey)
+    fun setIcon(machineId: String, iconKey: String, illustrated: Boolean) =
+        repo.setIcon(machineId, iconKey, illustrated)
 
-    fun addMachine(name: String, iconKey: String, group: MachineGroup) {
-        val created = repo.addCustomMachine(name, iconKey, group)
+    fun addMachine(name: String, iconKey: String, group: MachineGroup, illustrated: Boolean) {
+        val created = repo.addCustomMachine(name, iconKey, group, illustrated)
         _message.value =
             if (created != null) "Added ${created.name}" else "Give the machine a name first."
     }

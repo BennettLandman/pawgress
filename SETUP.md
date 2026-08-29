@@ -55,19 +55,25 @@ fine without it, so you can skip ahead, install, and come back.
 Nothing from this stage gets pasted into the code — Google matches Android apps by
 package name plus signing fingerprint, so there is no client ID to copy anywhere.
 
-### 2a. Get your signing fingerprint
+### 2a. Your signing fingerprint
 
-Debug builds are signed with a keystore Android Studio generates on your Mac. Run
-this **after** your first successful build:
+Already extracted from your built APK, so there is nothing to run:
+
+```
+SHA-1:   5E:19:F2:05:D3:FF:4C:F1:9D:AC:2C:9F:69:B8:49:5E:CE:3F:34:0D
+Package: com.balandman.liftlog
+```
+
+It comes from the standard Android debug keystore (`CN=Android Debug`, valid until
+2056), which lives on this Mac and does not change between builds. Build on a
+different machine or switch to a release keystore and you will need to register
+that new fingerprint too — to read it off any APK:
 
 ```bash
 keytool -list -v -alias androiddebugkey \
   -keystore ~/.android/debug.keystore \
   -storepass android -keypass android | grep SHA1
 ```
-
-Copy the `SHA1:` value — 20 hex pairs separated by colons. It is stable for this
-Mac, so you only do this once.
 
 ### 2b. Create a Google Cloud project
 

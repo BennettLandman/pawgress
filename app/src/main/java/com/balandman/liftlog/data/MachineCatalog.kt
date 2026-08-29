@@ -75,6 +75,7 @@ object MachineCatalog {
         Seed("smith_squat", "Smith Machine Squat", "squat", MachineGroup.LOWER, visible = false),
 
         Seed("farmers_carry", "Farmer's Carry", "farmers_carry", MachineGroup.OTHER, visible = false),
+        Seed("shuttle_run", "Shuttle Run", "shuttle_run", MachineGroup.OTHER, visible = false),
     )
 
     /** Every icon a custom machine can pick from. */
@@ -89,7 +90,7 @@ object MachineCatalog {
         "hip_adduction", "horizontal_calf", "leg_curl", "leg_extension",
         "seated_leg_press", "seated_leg_curl", "squat",
         "ab_crunch", "back_extension", "leg_lift", "torso_rotation", "woodchop",
-        "farmers_carry",
+        "farmers_carry", "shuttle_run",
     )
 
     fun defaults(): List<Machine> = SEEDS.mapIndexed { index, seed ->

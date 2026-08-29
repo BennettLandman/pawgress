@@ -56,8 +56,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import com.balandman.liftlog.R
 import com.balandman.liftlog.data.Machine
 import com.balandman.liftlog.data.MachineCatalog
 import com.balandman.liftlog.data.MachineGroup
@@ -81,8 +83,8 @@ fun SettingsScreen(
     onSetVisible: (String, Boolean) -> Unit,
     onSetAllVisible: (Boolean) -> Unit,
     onRename: (String, String) -> Unit,
-    onSetIcon: (String, String) -> Unit,
-    onAddMachine: (String, String, MachineGroup) -> Unit,
+    onSetIcon: (String, String, Boolean) -> Unit,
+    onAddMachine: (String, String, MachineGroup, Boolean) -> Unit,
     onDeleteMachine: (String) -> Unit,
 ) {
     var editing by remember { mutableStateOf<Machine?>(null) }
@@ -167,6 +169,7 @@ fun SettingsScreen(
                 }
             }
 
+            item { CreditsSection() }
             item { Spacer(Modifier.height(32.dp)) }
         }
     }
@@ -177,10 +180,11 @@ fun SettingsScreen(
             initialName = "",
             initialIcon = "machine",
             initialGroup = MachineGroup.OTHER,
+            initialIllustrated = true,
             canDelete = false,
             onDismiss = { adding = false },
-            onSave = { name, icon, group ->
-                onAddMachine(name, icon, group)
+            onSave = { name, icon, group, illustrated ->
+                onAddMachine(name, icon, group, illustrated)
                 adding = false
             },
             onDelete = {},
@@ -193,12 +197,13 @@ fun SettingsScreen(
             initialName = machine.name,
             initialIcon = machine.iconKey,
             initialGroup = machine.group,
+            initialIllustrated = machine.illustrated,
             canDelete = machine.custom,
             groupEditable = false,
             onDismiss = { editing = null },
-            onSave = { name, icon, _ ->
+            onSave = { name, icon, _, illustrated ->
                 onRename(machine.id, name)
-                onSetIcon(machine.id, icon)
+                onSetIcon(machine.id, icon, illustrated)
                 editing = null
             },
             onDelete = {
@@ -344,7 +349,7 @@ private fun MachineRow(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MachineArt(iconKey = machine.iconKey, size = 34.dp)
+        MachineArt(iconKey = machine.iconKey, size = 34.dp, illustrated = machine.illustrated)
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f)) {
             Text(machine.name, style = MaterialTheme.typography.bodyLarge)
@@ -373,15 +378,17 @@ private fun MachineDialog(
     initialName: String,
     initialIcon: String,
     initialGroup: MachineGroup,
+    initialIllustrated: Boolean,
     canDelete: Boolean,
     groupEditable: Boolean = true,
     onDismiss: () -> Unit,
-    onSave: (String, String, MachineGroup) -> Unit,
+    onSave: (String, String, MachineGroup, Boolean) -> Unit,
     onDelete: () -> Unit,
 ) {
     var name by remember { mutableStateOf(initialName) }
     var icon by remember { mutableStateOf(initialIcon) }
     var group by remember { mutableStateOf(initialGroup) }
+    var illustrated by remember { mutableStateOf(initialIllustrated) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -416,6 +423,26 @@ private fun MachineDialog(
                 }
 
                 Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Illustrated artwork", style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            "Off shows the classic line icon instead.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = illustrated && MachineIcons.artFor(icon) != null,
+                        onCheckedChange = { illustrated = it },
+                        enabled = MachineIcons.artFor(icon) != null,
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
                 Text("Icon", style = MaterialTheme.typography.labelMedium)
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(48.dp),
@@ -442,7 +469,11 @@ private fun MachineDialog(
                                 .clickable { icon = key },
                             contentAlignment = Alignment.Center,
                         ) {
-                            MachineArt(iconKey = key, size = 36.dp)
+                            MachineArt(
+                                iconKey = key,
+                                size = 36.dp,
+                                illustrated = illustrated || MachineIcons.artFor(key) == null,
+                            )
                         }
                     }
                 }
@@ -456,7 +487,7 @@ private fun MachineDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(name, icon, group) },
+                onClick = { onSave(name, icon, group, illustrated) },
                 enabled = name.isNotBlank(),
             ) { Text("Save") }
         },
@@ -464,4 +495,83 @@ private fun MachineDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
+}
+
+/**
+ * The exact credits copy Bennett wrote, shown once at the bottom of settings —
+ * below the photo he supplied, never reworded.
+ */
+@Composable
+private fun CreditsSection() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 28.dp, bottom = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.outlineVariant,
+            modifier = Modifier.padding(bottom = 20.dp),
+        )
+
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(R.drawable.credits_photo),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxWidth(0.72f)
+                .clip(RoundedCornerShape(20.dp)),
+        )
+
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            "Created by Orinda & Bennett Landman",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Made with cats, curiosity, and an unreasonable amount of code.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            "Built with the help of Claude and OpenAI Codex.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Version 1.0",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            "Your data stays yours.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "This app does not collect or store user data in a central database. " +
+                "No sign-in is required. If you choose to sign in, your app data is " +
+                "stored in a Google Sheet associated with your Google account.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "© 2026 Orinda & Bennett Landman. All rights reserved.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
 }

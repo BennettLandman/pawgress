@@ -229,15 +229,20 @@ class LiftRepository(context: Context) {
         }
     }
 
-    fun setIcon(machineId: String, iconKey: String) = mutateActive { profile ->
+    fun setIcon(machineId: String, iconKey: String, illustrated: Boolean) = mutateActive { profile ->
         profile.copy(
             machines = profile.machines.map {
-                if (it.id == machineId) it.copy(iconKey = iconKey) else it
+                if (it.id == machineId) it.copy(iconKey = iconKey, illustrated = illustrated) else it
             }
         )
     }
 
-    fun addCustomMachine(name: String, iconKey: String, group: MachineGroup): Machine? {
+    fun addCustomMachine(
+        name: String,
+        iconKey: String,
+        group: MachineGroup,
+        illustrated: Boolean = true,
+    ): Machine? {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return null
         val machine = Machine(
@@ -248,6 +253,7 @@ class LiftRepository(context: Context) {
             visible = true,
             custom = true,
             sortOrder = (current().machines.maxOfOrNull { it.sortOrder } ?: -1) + 1,
+            illustrated = illustrated,
         )
         mutateActive { profile -> profile.copy(machines = profile.machines + machine) }
         return machine
@@ -490,6 +496,7 @@ private fun Machine.toJson(): JSONObject = JSONObject().apply {
     put("visible", visible)
     put("custom", custom)
     put("sortOrder", sortOrder)
+    put("illustrated", illustrated)
     if (lastWeight != null) put("lastWeight", lastWeight)
     if (lastLoggedAt != null) put("lastLoggedAt", lastLoggedAt)
 }
@@ -506,6 +513,7 @@ private fun JSONObject.toMachine(): Machine? {
         sortOrder = optInt("sortOrder", 0),
         lastWeight = if (has("lastWeight")) optInt("lastWeight") else null,
         lastLoggedAt = if (has("lastLoggedAt")) optLong("lastLoggedAt") else null,
+        illustrated = optBoolean("illustrated", true),
     )
 }
 

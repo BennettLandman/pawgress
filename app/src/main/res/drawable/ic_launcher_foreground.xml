@@ -1,37 +1,7 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Dumbbell, kept inside the 66dp adaptive-icon safe zone. -->
-    <path
-        android:pathData="M38,54 L70,54"
-        android:fillColor="#00000000"
-        android:strokeWidth="7"
-        android:strokeColor="#FF7A45"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M35,41 L35,67"
-        android:fillColor="#00000000"
-        android:strokeWidth="10"
-        android:strokeColor="#FF7A45"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M73,41 L73,67"
-        android:fillColor="#00000000"
-        android:strokeWidth="10"
-        android:strokeColor="#FF7A45"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M27,47 L27,61"
-        android:fillColor="#00000000"
-        android:strokeWidth="8"
-        android:strokeColor="#FFB08C"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M81,47 L81,61"
-        android:fillColor="#00000000"
-        android:strokeWidth="8"
-        android:strokeColor="#FFB08C"
-        android:strokeLineCap="round" />
-</vector>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The paw-and-ring mark from the real app artwork, chroma-keyed out of
+     app_icon.png and centered in the 108dp adaptive-icon canvas at roughly
+     62% scale so the launcher mask never clips it. -->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@drawable/ic_launcher_foreground_art"
+    android:gravity="center" />

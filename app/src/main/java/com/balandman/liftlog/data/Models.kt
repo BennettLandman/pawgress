@@ -27,6 +27,12 @@ data class Machine(
     val sortOrder: Int = 0,
     val lastWeight: Int? = null,
     val lastLoggedAt: Long? = null,
+    /**
+     * Prefer the full-color illustration for [iconKey] when one exists. Off
+     * switches back to the hand-drawn line icon, which stays available for
+     * every key — real artwork doesn't retire it.
+     */
+    val illustrated: Boolean = true,
 )
 
 /** One completed exercise. Append-only; this is what gets mirrored to Sheets. */

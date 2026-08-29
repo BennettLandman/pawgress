@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,22 +38,35 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.balandman.liftlog.R
 import com.balandman.liftlog.data.GymDay
 import com.balandman.liftlog.data.Machine
+import com.balandman.liftlog.data.MachineGroup
 import com.balandman.liftlog.ui.theme.LocalTileColors
 import java.time.format.DateTimeFormatter
 
 private val DATE_HEADER: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
+
+/** Body-area order for the main grid — the same order Settings groups by. */
+private val GROUP_ORDER = listOf(
+    MachineGroup.UPPER,
+    MachineGroup.CORE,
+    MachineGroup.LOWER,
+    MachineGroup.OTHER,
+)
 
 @Composable
 fun MainScreen(
     machines: List<Machine>,
     syncing: Boolean,
     onOpenSettings: () -> Unit,
+    onOpenFunFacts: () -> Unit,
+    onOpenTrends: () -> Unit,
     onSyncNow: () -> Unit,
     onTapMachine: (Machine) -> Unit,
     modifier: Modifier = Modifier,
@@ -63,7 +77,21 @@ fun MainScreen(
         TopAppBar(
             title = {
                 Column {
-                    Text("Pawgress", style = MaterialTheme.typography.titleLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Pawgress",
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.clickable(onClick = onOpenFunFacts),
+                        )
+                        IconButton(onClick = onOpenTrends, modifier = Modifier.size(30.dp)) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_trend_graph),
+                                contentDescription = "Trends",
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     Text(
                         text = buildSubtitle(doneCount, machines.size),
                         style = MaterialTheme.typography.bodySmall,
@@ -101,12 +129,42 @@ fun MainScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(machines, key = { it.id }) { machine ->
-                    MachineTile(
-                        machine = machine,
-                        done = GymDay.isToday(machine.lastLoggedAt),
-                        onClick = { onTapMachine(machine) },
-                    )
+                // A subtle label per body area, shown only when more than one
+                // area is on screen — with a single group it would just be
+                // repeating what the grid already makes obvious.
+                val groupsPresent = GROUP_ORDER.filter { g -> machines.any { it.group == g } }
+                val showHeaders = groupsPresent.size > 1
+
+                GROUP_ORDER.forEach { group ->
+                    val inGroup = machines.filter { it.group == group }.sortedBy { it.sortOrder }
+                    if (inGroup.isEmpty()) return@forEach
+
+                    if (showHeaders) {
+                        item(
+                            key = "header_${group.name}",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
+                            Text(
+                                text = group.label.uppercase(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                letterSpacing = 1.2.sp,
+                                modifier = Modifier.padding(
+                                    start = 4.dp,
+                                    top = if (group == groupsPresent.first()) 4.dp else 14.dp,
+                                    bottom = 2.dp,
+                                ),
+                            )
+                        }
+                    }
+
+                    items(inGroup, key = { it.id }) { machine ->
+                        MachineTile(
+                            machine = machine,
+                            done = GymDay.isToday(machine.lastLoggedAt),
+                            onClick = { onTapMachine(machine) },
+                        )
+                    }
                 }
             }
         }
@@ -151,7 +209,7 @@ private fun MachineTile(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            MachineArt(iconKey = machine.iconKey, size = 56.dp)
+            MachineArt(iconKey = machine.iconKey, size = 56.dp, illustrated = machine.illustrated)
 
             Spacer(Modifier.height(6.dp))
 

@@ -28,10 +28,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.balandman.liftlog.sync.AccountPicker
+import com.balandman.liftlog.ui.FunFactsScreen
 import com.balandman.liftlog.ui.LogSheet
 import com.balandman.liftlog.ui.MainScreen
 import com.balandman.liftlog.ui.MainViewModel
 import com.balandman.liftlog.ui.SettingsScreen
+import com.balandman.liftlog.ui.TrendsScreen
 import com.balandman.liftlog.ui.theme.LiftLogTheme
 
 class MainActivity : ComponentActivity() {
@@ -85,6 +87,7 @@ private fun AppRoot(
 ) {
     val allMachines by viewModel.machines.collectAsStateWithLifecycle()
     val visibleMachines by viewModel.visibleMachines.collectAsStateWithLifecycle()
+    val log by viewModel.log.collectAsStateWithLifecycle()
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val syncing by viewModel.syncing.collectAsStateWithLifecycle()
     val pendingCount by viewModel.pendingCount.collectAsStateWithLifecycle()
@@ -95,7 +98,9 @@ private fun AppRoot(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    var showSettings by rememberSaveable { mutableStateOf(false) }
+    // "main" | "settings" | "funfacts" | "trends" — a plain string survives
+    // process death via rememberSaveable with no custom Saver to write.
+    var screen by rememberSaveable { mutableStateOf("main") }
     var sheetMachineId by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(consentRequest) {
@@ -119,19 +124,19 @@ private fun AppRoot(
         }
     }
 
-    BackHandler(enabled = showSettings) { showSettings = false }
+    BackHandler(enabled = screen != "main") { screen = "main" }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            if (showSettings) {
-                SettingsScreen(
+            when (screen) {
+                "settings" -> SettingsScreen(
                     machines = allMachines,
                     syncState = syncState,
                     syncing = syncing,
                     pendingCount = pendingCount,
-                    onBack = { showSettings = false },
+                    onBack = { screen = "main" },
                     onChooseAccount = viewModel::chooseAccount,
                     onDisconnectGoogle = viewModel::disconnect,
                     onSyncNow = { viewModel.syncNow(context) },
@@ -142,11 +147,24 @@ private fun AppRoot(
                     onAddMachine = viewModel::addMachine,
                     onDeleteMachine = viewModel::deleteMachine,
                 )
-            } else {
-                MainScreen(
+
+                "funfacts" -> FunFactsScreen(
+                    log = log,
+                    onBack = { screen = "main" },
+                )
+
+                "trends" -> TrendsScreen(
+                    machines = allMachines,
+                    log = log,
+                    onBack = { screen = "main" },
+                )
+
+                else -> MainScreen(
                     machines = visibleMachines,
                     syncing = syncing,
-                    onOpenSettings = { showSettings = true },
+                    onOpenSettings = { screen = "settings" },
+                    onOpenFunFacts = { screen = "funfacts" },
+                    onOpenTrends = { screen = "trends" },
                     onSyncNow = { viewModel.syncNow(context) },
                     onTapMachine = { sheetMachineId = it.id },
                 )
