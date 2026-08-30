@@ -84,15 +84,21 @@ fun LogSheet(
                 .padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                MachineArt(iconKey = machine.iconKey, size = 44.dp)
-                Spacer(Modifier.size(12.dp))
-                Text(
-                    text = machine.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Center,
-                )
-            }
+            // The whole reason to open this sheet is to look at the machine and
+            // confirm it's the right one — the art gets to be the hero here,
+            // not a small label next to the name.
+            MachineArt(
+                iconKey = machine.iconKey,
+                size = 192.dp,
+                illustrated = machine.illustrated,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = machine.name,
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+            )
 
             Text(
                 text = statusLine(machine, doneToday),

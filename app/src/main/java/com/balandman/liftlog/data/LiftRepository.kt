@@ -259,6 +259,34 @@ class LiftRepository(context: Context) {
         return machine
     }
 
+    /**
+     * Undoes every entry logged today, one machine at a time — each one restores
+     * that machine's tile to whatever it showed before today and, if that entry
+     * had already synced, queues the matching sheet row for deletion. Nothing
+     * from before today is touched.
+     */
+    fun resetToday() {
+        val machineIds = current().log
+            .filter { GymDay.isToday(it.loggedAt) }
+            .map { it.machineId }
+            .distinct()
+        machineIds.forEach { undoToday(it) }
+    }
+
+    /**
+     * Erases every lift ever logged in the app and blanks every tile back to
+     * "—", locally. Machines, names, icons, hidden/shown state and the Google
+     * connection are all left exactly as they are. The Google Sheet — an
+     * append-only record by design — is never touched: old rows already synced
+     * there stay put, since this is a reset of the phone, not of that history.
+     */
+    fun fullReset() = mutateActive { profile ->
+        profile.copy(
+            log = emptyList(),
+            machines = profile.machines.map { it.copy(lastWeight = null, lastLoggedAt = null) },
+        )
+    }
+
     /** Only custom machines can be deleted; built-ins are hidden instead. */
     fun deleteCustomMachine(machineId: String) {
         if (machine(machineId)?.custom != true) return

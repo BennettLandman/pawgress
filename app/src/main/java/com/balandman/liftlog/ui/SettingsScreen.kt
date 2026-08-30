@@ -86,9 +86,13 @@ fun SettingsScreen(
     onSetIcon: (String, String, Boolean) -> Unit,
     onAddMachine: (String, String, MachineGroup, Boolean) -> Unit,
     onDeleteMachine: (String) -> Unit,
+    onResetToday: () -> Unit,
+    onFullReset: () -> Unit,
 ) {
     var editing by remember { mutableStateOf<Machine?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var confirmingResetToday by remember { mutableStateOf(false) }
+    var confirmingFullReset by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -169,9 +173,71 @@ fun SettingsScreen(
                 }
             }
 
+            item {
+                ResetSection(
+                    onResetToday = { confirmingResetToday = true },
+                    onFullReset = { confirmingFullReset = true },
+                )
+            }
             item { CreditsSection() }
             item { Spacer(Modifier.height(32.dp)) }
         }
+    }
+
+    if (confirmingResetToday) {
+        AlertDialog(
+            onDismissRequest = { confirmingResetToday = false },
+            title = { Text("Reset today?") },
+            text = {
+                Text(
+                    "This removes every lift you've logged today and puts each of " +
+                        "those machines' tiles back to whatever they showed before " +
+                        "today. If any of today's entries already synced to your " +
+                        "Google Sheet, they'll be deleted from it on the next sync. " +
+                        "Nothing from before today is affected."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onResetToday()
+                    confirmingResetToday = false
+                }) {
+                    Text("Reset today", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingResetToday = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (confirmingFullReset) {
+        AlertDialog(
+            onDismissRequest = { confirmingFullReset = false },
+            title = { Text("Full reset?") },
+            text = {
+                Text(
+                    "This permanently erases every lift you've ever logged in " +
+                        "Pawgress and blanks every tile back to —. Your machines, " +
+                        "their names, icons, and hidden/shown choices are untouched, " +
+                        "and you'll stay signed in to Google. This does not delete " +
+                        "anything already saved in your Google Sheet — that " +
+                        "history stays exactly as it is; only what's on this phone " +
+                        "is cleared. This can't be undone."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onFullReset()
+                    confirmingFullReset = false
+                }) {
+                    Text("Erase all activity", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingFullReset = false }) { Text("Cancel") }
+            },
+        )
     }
 
     if (adding) {
@@ -495,6 +561,46 @@ private fun MachineDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
+}
+
+/** Destructive, rarely-used actions — set apart from everyday settings above. */
+@Composable
+private fun ResetSection(
+    onResetToday: () -> Unit,
+    onFullReset: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "Reset",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "These only affect what's logged in the app — always confirmed before " +
+                "anything is removed.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onResetToday,
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.error,
+            ),
+        ) { Text("Reset today") }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onFullReset,
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.error,
+            ),
+        ) { Text("Full reset") }
+    }
 }
 
 /**

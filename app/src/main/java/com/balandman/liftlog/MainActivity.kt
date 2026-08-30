@@ -146,6 +146,8 @@ private fun AppRoot(
                     onSetIcon = viewModel::setIcon,
                     onAddMachine = viewModel::addMachine,
                     onDeleteMachine = viewModel::deleteMachine,
+                    onResetToday = viewModel::resetToday,
+                    onFullReset = viewModel::fullReset,
                 )
 
                 "funfacts" -> FunFactsScreen(

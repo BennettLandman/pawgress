@@ -94,6 +94,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteMachine(machineId: String) = repo.deleteCustomMachine(machineId)
 
+    fun resetToday() {
+        repo.resetToday()
+        _message.value = "Today's lifts were reset."
+        scheduleAutoSync()
+    }
+
+    fun fullReset() {
+        autoSyncJob?.cancel()
+        repo.fullReset()
+        _message.value = "All activity was cleared. Your Google Sheet history is untouched."
+    }
+
     // --------------------------------------------------------------------- sync
 
     /** Connect an account, or switch to a different one. Opens the system picker. */
