@@ -213,6 +213,38 @@ object CoachOutfitQuotes {
         "20:winterholiday" to "Even bundled in layers, your form should remain flawless.",
     )
 
+    /**
+     * One fixed catchphrase per coach for their base (un-costumed) look —
+     * deliberately distinct from [com.balandman.liftlog.data.Coach.personality],
+     * which is a third-person descriptor shown elsewhere on the card. This is
+     * what the coach actually "says" when no outfit is being previewed.
+     */
+    private val BASE_QUOTES: Map<Int, String> = mapOf(
+        1 to "One step at a time, kid — I've got nowhere else I'd rather be.",
+        2 to "No rush. We'll get there exactly on time, however long it takes.",
+        3 to "Darling, effortless doesn't mean easy — now let's begin.",
+        4 to "Comfy shorts, steady effort. That's the whole plan today.",
+        5 to "Bet you can't make this next rep look boring. Go on, try.",
+        6 to "Every rep here is a number I'm going to beat later.",
+        7 to "I shall observe. You shall perspire. A fair arrangement.",
+        8 to "No shortcuts out here. Just you, the weight, and the will to move it.",
+        9 to "Same me, same you, same good habit. Let's get to it.",
+        10 to "Whenever you're ready. I'm not going anywhere.",
+        11 to "OKAY OKAY OKAY LET'S GOOO I'VE BEEN WAITING ALL DAY!",
+        12 to "The hunt begins the moment you pick up that first weight.",
+        13 to "Confidence is free. Good form? Also free. Let's use both.",
+        14 to "Breathe in effort, breathe out doubt. Begin.",
+        15 to "I've got all night. Literally. Let's hear that first rep.",
+        16 to "Every legend started with one unimpressive first rep. Onward!",
+        17 to "Let's do the math: effort plus consistency equals results. Simple.",
+        18 to "Right here, right next to you, like always. Let's go.",
+        19 to "New day, new challenge, same energy. Let's see what you've got!",
+        20 to "Precision first. Power will follow naturally.",
+    )
+
     /** This coach+theme's fixed catchphrase, or null if somehow not written yet. */
     fun quoteFor(coachId: Int, theme: CoachTheme): String? = QUOTES["$coachId:${theme.slug}"]
+
+    /** This coach's fixed catchphrase for their base look, or null if not written yet. */
+    fun baseQuoteFor(coachId: Int): String? = BASE_QUOTES[coachId]
 }
