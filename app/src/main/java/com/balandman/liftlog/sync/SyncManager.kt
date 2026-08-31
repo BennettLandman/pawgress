@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import com.balandman.liftlog.data.LiftRepository
 import com.balandman.liftlog.data.Profile
+import com.balandman.liftlog.data.RestoreSummary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -17,6 +18,7 @@ sealed interface SyncResult {
     data class SwitchedProfile(val email: String) : SyncResult
     data class NeedsConsent(val pendingIntent: PendingIntent) : SyncResult
     data class Failed(val message: String) : SyncResult
+    data class Restored(val summary: RestoreSummary) : SyncResult
 }
 
 /**
@@ -71,6 +73,51 @@ class SyncManager(
     /** Used right after the consent screen or account picker hands back a token. */
     suspend fun syncWithToken(token: String): SyncResult =
         mutex.withLock { runSync(token, allowProfileSwitch = true) }
+
+    /** Used right after the consent screen hands back a token for a restore. */
+    suspend fun restoreWithToken(token: String): SyncResult =
+        mutex.withLock { runRestore(token) }
+
+    /**
+     * Reads the active profile's own spreadsheet back into the app — restoring
+     * a backup, typically after a reinstall or a [LiftRepository.fullReset].
+     * Purely additive: it merges sheet rows into whatever is already local
+     * rather than replacing it, so it's safe to run more than once.
+     */
+    suspend fun restore(context: Context, allowConsentUi: Boolean): SyncResult = mutex.withLock {
+        val profile = repo.current()
+        val target = profile.accountEmail?.let { Account(it, GOOGLE_ACCOUNT_TYPE) }
+            ?: return@withLock SyncResult.Failed("Sign in with Google first.")
+
+        when (val outcome = GoogleAuth.authorize(context, target)) {
+            is AuthOutcome.Success -> runRestore(outcome.accessToken)
+            is AuthOutcome.NeedsConsent ->
+                if (allowConsentUi) SyncResult.NeedsConsent(outcome.pendingIntent)
+                else SyncResult.NotConnected
+
+            is AuthOutcome.Failure -> SyncResult.Failed(outcome.message)
+        }
+    }
+
+    private suspend fun runRestore(token: String): SyncResult = withContext(Dispatchers.IO) {
+        try {
+            val profile = repo.current()
+            val email = api.userEmail(token)
+            if (email == null || email != profile.accountEmail) {
+                return@withContext SyncResult.Failed(
+                    "Signed into a different Google account than this profile — try Sync first."
+                )
+            }
+            val spreadsheetId = profile.spreadsheetId
+                ?: return@withContext SyncResult.Failed(
+                    "No Google Sheet connected yet — sync once first so there's something to restore from."
+                )
+            val rows = api.readAllRows(token, spreadsheetId)
+            SyncResult.Restored(repo.restoreFromRows(rows))
+        } catch (e: Exception) {
+            SyncResult.Failed(e.message ?: "Restore failed.")
+        }
+    }
 
     private suspend fun runSync(
         token: String,
@@ -133,6 +180,9 @@ class SyncManager(
     private fun ensureSpreadsheet(token: String, profile: Profile): SpreadsheetRef {
         val existingId = profile.spreadsheetId?.takeIf { api.spreadsheetExists(token, it) }
         if (existingId != null) {
+            // Cheap and idempotent — picks up new columns (Area, Difficulty) on a
+            // sheet created before they existed, without touching any data row.
+            runCatching { api.ensureHeaderUpToDate(token, existingId) }
             return SpreadsheetRef(
                 id = existingId,
                 url = profile.spreadsheetUrl

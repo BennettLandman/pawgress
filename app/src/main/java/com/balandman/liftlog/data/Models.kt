@@ -10,6 +10,34 @@ enum class MachineGroup(val label: String) {
     companion object {
         fun fromName(value: String?): MachineGroup =
             entries.firstOrNull { it.name == value } ?: OTHER
+
+        /** Matches the label as written in the Google Sheet's Area column. */
+        fun fromLabel(value: String?): MachineGroup? {
+            if (value.isNullOrBlank()) return null
+            return entries.firstOrNull { it.label.equals(value.trim(), ignoreCase = true) }
+        }
+    }
+}
+
+/**
+ * How a set felt — optional, self-reported, and shown as a color code rather
+ * than a number so it reads at a glance next to the weight.
+ */
+enum class Difficulty(val label: String) {
+    VERY_EASY("Very Easy"),
+    EASY("Easy"),
+    ABOUT_RIGHT("About Right"),
+    HARD("Hard"),
+    VERY_HARD("Very Hard");
+
+    companion object {
+        fun fromName(value: String?): Difficulty? = entries.firstOrNull { it.name == value }
+
+        /** Matches the label as written in the Google Sheet, case-insensitively. */
+        fun fromLabel(value: String?): Difficulty? {
+            if (value.isNullOrBlank()) return null
+            return entries.firstOrNull { it.label.equals(value.trim(), ignoreCase = true) }
+        }
     }
 }
 
@@ -33,6 +61,8 @@ data class Machine(
      * every key — real artwork doesn't retire it.
      */
     val illustrated: Boolean = true,
+    /** How the most recent logged session for this machine felt, if recorded. */
+    val lastDifficulty: Difficulty? = null,
 )
 
 /** One completed exercise. Append-only; this is what gets mirrored to Sheets. */
@@ -43,6 +73,12 @@ data class LogEntry(
     val weight: Int,
     val loggedAt: Long,
     val synced: Boolean = false,
+    /**
+     * The machine's body area *at the time of this lift* — snapshotted like
+     * [machineName], so re-grouping a machine later never rewrites history.
+     */
+    val machineGroup: MachineGroup = MachineGroup.OTHER,
+    val difficulty: Difficulty? = null,
 )
 
 /**
@@ -83,6 +119,23 @@ data class SyncState(
     val spreadsheetUrl: String? = null,
     val lastSyncAt: Long? = null,
     val lastError: String? = null,
+)
+
+/** One data row read back out of the Google Sheet, for the "restore" flow. */
+data class SheetRow(
+    val loggedAt: Long,
+    val exercise: String,
+    val area: String?,
+    val weight: Int,
+    val difficultyLabel: String?,
+    val entryId: String,
+)
+
+/** What a restore actually did, so the user sees more than just "done". */
+data class RestoreSummary(
+    val entriesAdded: Int,
+    val entriesTotal: Int,
+    val machinesCreated: Int,
 )
 
 object Weights {

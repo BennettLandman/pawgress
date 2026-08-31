@@ -2,6 +2,8 @@
 
 package com.balandman.liftlog.ui
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,10 +15,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -38,6 +42,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -45,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.balandman.liftlog.data.GymDay
 import com.balandman.liftlog.data.LogEntry
 import com.balandman.liftlog.data.Machine
+import com.balandman.liftlog.data.MachineGroup
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -58,7 +69,35 @@ private enum class TrendRange(val label: String) {
     ALL("All Time"),
 }
 
+/**
+ * All ▸ a single body area ▸ a single machine. Drilling down narrows which
+ * machines feed the overlay line chart below; the bar chart and gains list
+ * stay scoped to the range picker above, not this.
+ */
+private sealed interface TrendScope {
+    data object All : TrendScope
+    data class Area(val group: MachineGroup) : TrendScope
+    data class Single(val machineId: String, val machineName: String, val group: MachineGroup) : TrendScope
+}
+
 private data class Bucket(val label: String, val totalWeight: Int, val liftCount: Int)
+
+/** One point on the overlay chart: how far above/below this machine's own starting weight. */
+private data class SeriesPoint(val loggedAt: Long, val delta: Int)
+
+private data class MachineSeries(
+    val machineId: String,
+    val name: String,
+    val color: Color,
+    val points: List<SeriesPoint>,
+)
+
+/** Distinct hues, cycled by index — separate from [com.balandman.liftlog.ui.theme.GroupColors], which labels an area rather than an individual machine. */
+private val CHART_PALETTE = listOf(
+    Color(0xFFB96756), Color(0xFF6E7F76), Color(0xFF978DAE), Color(0xFFC9A227),
+    Color(0xFF4C7B8F), Color(0xFF9C5B8C), Color(0xFF5B8C5A), Color(0xFFB5533C),
+    Color(0xFF3E6B8A), Color(0xFF8C7A3E), Color(0xFF6B5B95), Color(0xFF4E8C7A),
+)
 
 @Composable
 fun TrendsScreen(
@@ -67,12 +106,31 @@ fun TrendsScreen(
     onBack: () -> Unit,
 ) {
     var range by remember { mutableStateOf(TrendRange.MONTH) }
+    var scope by remember { mutableStateOf<TrendScope>(TrendScope.All) }
     val today = GymDay.today()
 
-    val buckets = remember(log, range, today) { buildBuckets(log, range, today) }
-    val rangeStart = remember(log, range, today) { rangeStart(log, range, today) }
-    val inRange = remember(log, rangeStart) { log.filter { GymDay.dayOf(it.loggedAt) >= rangeStart } }
-    val gains = remember(inRange, machines) { biggestGains(inRange, machines) }
+    // Every time series on this screen is scoped to currently-visible machines
+    // by default — a hidden machine's history doesn't disappear, it's just not
+    // what "how am I trending" means day to day.
+    val visibleMachines = remember(machines) { machines.filter { it.visible } }
+    val visibleIds = remember(visibleMachines) { visibleMachines.map { it.id }.toHashSet() }
+    val visibleLog = remember(log, visibleIds) { log.filter { it.machineId in visibleIds } }
+
+    val buckets = remember(visibleLog, range, today) { buildBuckets(visibleLog, range, today) }
+    val rangeStart = remember(visibleLog, range, today) { rangeStart(visibleLog, range, today) }
+    val inRange = remember(visibleLog, rangeStart) {
+        visibleLog.filter { GymDay.dayOf(it.loggedAt) >= rangeStart }
+    }
+    val gains = remember(inRange, visibleMachines) { biggestGains(inRange, visibleMachines) }
+
+    val scopedMachines = remember(visibleMachines, scope) {
+        when (val s = scope) {
+            TrendScope.All -> visibleMachines
+            is TrendScope.Area -> visibleMachines.filter { it.group == s.group }
+            is TrendScope.Single -> visibleMachines.filter { it.id == s.machineId }
+        }
+    }
+    val series = remember(inRange, scopedMachines) { buildSeries(inRange, scopedMachines) }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -137,6 +195,48 @@ fun TrendsScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                }
+            }
+
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            "Relative progress, this range",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            "Each line starts at its machine's own weight at the start of " +
+                                "this range, so a 5 lb gain on one machine and a 50 lb gain " +
+                                "on another are easy to compare.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        ScopePicker(
+                            scope = scope,
+                            machines = visibleMachines,
+                            onScopeChange = { scope = it },
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        if (series.isEmpty()) {
+                            Text(
+                                "Nothing with two or more entries in this range yet.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            OverlayLineChart(series)
+                            Spacer(Modifier.height(12.dp))
+                            ChartLegend(series)
+                        }
                     }
                 }
             }
@@ -214,6 +314,139 @@ private fun BarChart(buckets: List<Bucket>) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 9.sp,
+                )
+            }
+        }
+    }
+}
+
+/** All ▸ area ▸ machine, as a row of chips that grows a second row once an area is picked. */
+@Composable
+private fun ScopePicker(
+    scope: TrendScope,
+    machines: List<Machine>,
+    onScopeChange: (TrendScope) -> Unit,
+) {
+    val groupsPresent = MachineGroup.entries.filter { g -> machines.any { it.group == g } }
+    val activeGroup = when (scope) {
+        is TrendScope.Area -> scope.group
+        is TrendScope.Single -> scope.group
+        TrendScope.All -> null
+    }
+
+    Column {
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            FilterChip(
+                selected = scope == TrendScope.All,
+                onClick = { onScopeChange(TrendScope.All) },
+                label = { Text("All") },
+            )
+            groupsPresent.forEach { group ->
+                FilterChip(
+                    selected = activeGroup == group,
+                    onClick = { onScopeChange(TrendScope.Area(group)) },
+                    label = { Text(group.label) },
+                )
+            }
+        }
+
+        if (activeGroup != null) {
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                machines.filter { it.group == activeGroup }.sortedBy { it.sortOrder }.forEach { machine ->
+                    val selected = (scope as? TrendScope.Single)?.machineId == machine.id
+                    FilterChip(
+                        selected = selected,
+                        onClick = {
+                            onScopeChange(TrendScope.Single(machine.id, machine.name, machine.group))
+                        },
+                        label = { Text(machine.name) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One line per machine, each rebased to its own starting weight in this range
+ * so a small machine's progress and a big machine's progress read on the same
+ * scale. A dashed zero line marks "same as range start".
+ */
+@Composable
+private fun OverlayLineChart(series: List<MachineSeries>) {
+    val trackColor = MaterialTheme.colorScheme.outlineVariant
+
+    val minTime = series.minOf { it.points.first().loggedAt }
+    val maxTime = series.maxOf { it.points.last().loggedAt }
+    val timeSpan = (maxTime - minTime).coerceAtLeast(1L).toFloat()
+
+    val minDelta = (series.minOf { s -> s.points.minOf { it.delta } }).coerceAtMost(0)
+    val maxDelta = (series.maxOf { s -> s.points.maxOf { it.delta } }).coerceAtLeast(0)
+    val deltaSpan = (maxDelta - minDelta).coerceAtLeast(1).toFloat()
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp),
+    ) {
+        val zeroY = size.height - ((0 - minDelta).toFloat() / deltaSpan) * size.height
+        drawLine(
+            color = trackColor,
+            start = Offset(0f, zeroY),
+            end = Offset(size.width, zeroY),
+            strokeWidth = 1.dp.toPx(),
+        )
+
+        series.forEach { s ->
+            if (s.points.size < 2) return@forEach
+            val path = Path()
+            s.points.forEachIndexed { index, point ->
+                val x = ((point.loggedAt - minTime).toFloat() / timeSpan) * size.width
+                val y = size.height - ((point.delta - minDelta).toFloat() / deltaSpan) * size.height
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            drawPath(
+                path = path,
+                color = s.color,
+                style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChartLegend(series: List<MachineSeries>) {
+    Column {
+        series.forEach { s ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .background(s.color, CircleShape),
+                )
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    s.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+                val latest = s.points.last().delta
+                Text(
+                    text = (if (latest > 0) "+" else "") + "$latest lb",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                    color = if (latest > 0) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -326,6 +559,21 @@ private fun buildBuckets(log: List<LogEntry>, range: TrendRange, today: LocalDat
                 Bucket(label, entries.sumOf { it.weight }, entries.size)
             }
         }
+    }
+}
+
+/** One series per machine with 2+ entries in range, rebased to its first entry in range. */
+private fun buildSeries(inRange: List<LogEntry>, machines: List<Machine>): List<MachineSeries> {
+    return machines.mapIndexedNotNull { index, machine ->
+        val entries = inRange.filter { it.machineId == machine.id }.sortedBy { it.loggedAt }
+        if (entries.size < 2) return@mapIndexedNotNull null
+        val base = entries.first().weight
+        MachineSeries(
+            machineId = machine.id,
+            name = machine.name,
+            color = CHART_PALETTE[index % CHART_PALETTE.size],
+            points = entries.map { SeriesPoint(it.loggedAt, it.weight - base) },
+        )
     }
 }
 

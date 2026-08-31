@@ -17,9 +17,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -47,6 +47,8 @@ import com.balandman.liftlog.R
 import com.balandman.liftlog.data.GymDay
 import com.balandman.liftlog.data.Machine
 import com.balandman.liftlog.data.MachineGroup
+import com.balandman.liftlog.ui.theme.DifficultyColors
+import com.balandman.liftlog.ui.theme.GroupColors
 import com.balandman.liftlog.ui.theme.LocalTileColors
 import java.time.format.DateTimeFormatter
 
@@ -122,6 +124,16 @@ fun MainScreen(
         if (machines.isEmpty()) {
             EmptyState(onOpenSettings)
         } else {
+            // Sorted by area, then by sort order within it, so machines from the
+            // same body area still cluster visually — but as an ordinary grid
+            // with no full-span rows to break it up. The area itself is shown
+            // per-tile (see MachineTile) rather than as a row header, so a
+            // group with an odd number of machines never leaves a gap.
+            val ordered = GROUP_ORDER.flatMap { group ->
+                machines.filter { it.group == group }.sortedBy { it.sortOrder }
+            }
+            val showGroupBadges = GROUP_ORDER.count { g -> machines.any { it.group == g } } > 1
+
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 108.dp),
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 24.dp),
@@ -129,42 +141,13 @@ fun MainScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                // A subtle label per body area, shown only when more than one
-                // area is on screen — with a single group it would just be
-                // repeating what the grid already makes obvious.
-                val groupsPresent = GROUP_ORDER.filter { g -> machines.any { it.group == g } }
-                val showHeaders = groupsPresent.size > 1
-
-                GROUP_ORDER.forEach { group ->
-                    val inGroup = machines.filter { it.group == group }.sortedBy { it.sortOrder }
-                    if (inGroup.isEmpty()) return@forEach
-
-                    if (showHeaders) {
-                        item(
-                            key = "header_${group.name}",
-                            span = { GridItemSpan(maxLineSpan) },
-                        ) {
-                            Text(
-                                text = group.label.uppercase(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                letterSpacing = 1.2.sp,
-                                modifier = Modifier.padding(
-                                    start = 4.dp,
-                                    top = if (group == groupsPresent.first()) 4.dp else 14.dp,
-                                    bottom = 2.dp,
-                                ),
-                            )
-                        }
-                    }
-
-                    items(inGroup, key = { it.id }) { machine ->
-                        MachineTile(
-                            machine = machine,
-                            done = GymDay.isToday(machine.lastLoggedAt),
-                            onClick = { onTapMachine(machine) },
-                        )
-                    }
+                items(ordered, key = { it.id }) { machine ->
+                    MachineTile(
+                        machine = machine,
+                        done = GymDay.isToday(machine.lastLoggedAt),
+                        showGroupBadge = showGroupBadges,
+                        onClick = { onTapMachine(machine) },
+                    )
                 }
             }
         }
@@ -184,6 +167,7 @@ private fun buildSubtitle(done: Int, total: Int): String {
 private fun MachineTile(
     machine: Machine,
     done: Boolean,
+    showGroupBadge: Boolean,
     onClick: () -> Unit,
 ) {
     val tiles = LocalTileColors.current
@@ -193,6 +177,7 @@ private fun MachineTile(
     val contentColor = if (done) tiles.onDone else tiles.onFresh
     val numberColor = if (done) tiles.doneNumber else tiles.freshNumber
     val borderColor = if (done) tiles.doneBorder else Color.Transparent
+    val difficultyColor = DifficultyColors.forName(machine.lastDifficulty?.name)
 
     Box(
         modifier = Modifier
@@ -230,6 +215,15 @@ private fun MachineTile(
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
+                if (difficultyColor != null) {
+                    Spacer(Modifier.size(5.dp))
+                    Box(
+                        modifier = Modifier
+                            .padding(bottom = 6.dp)
+                            .size(8.dp)
+                            .background(difficultyColor, CircleShape),
+                    )
+                }
             }
 
             Text(
@@ -241,6 +235,18 @@ private fun MachineTile(
                 minLines = 2,
                 lineHeight = 13.sp,
                 fontSize = 11.sp,
+            )
+        }
+
+        // The area indicator: a small colored dot in the corner rather than a
+        // row header, so an odd-sized group never breaks the grid's rows.
+        if (showGroupBadge) {
+            Box(
+                modifier = Modifier
+                    .padding(2.dp)
+                    .size(10.dp)
+                    .align(Alignment.TopStart)
+                    .background(GroupColors.forGroupName(machine.group.name), CircleShape),
             )
         }
 

@@ -106,12 +106,19 @@ class LiftRepository(context: Context) {
         val activeKey = _activeKey.value
         val activeProfile = profiles[activeKey]
         val onlyLocalExists = profiles.keys.all { it == Profile.LOCAL_KEY }
-        val adopt = activeKey == Profile.LOCAL_KEY && activeProfile != null && onlyLocalExists
 
-        val adopted = if (adopt && activeProfile != null) {
-            activeProfile.copy(key = email, accountEmail = email, connected = true)
+        // Splitting this into its own if/else (rather than a separate "adopt"
+        // boolean checked twice) lets the compiler smart-cast activeProfile to
+        // non-null right where it's used, instead of needing a second,
+        // provably-redundant null check below.
+        val adopt: Boolean
+        val adopted: Profile
+        if (activeKey == Profile.LOCAL_KEY && activeProfile != null && onlyLocalExists) {
+            adopt = true
+            adopted = activeProfile.copy(key = email, accountEmail = email, connected = true)
         } else {
-            blank(email).copy(accountEmail = email, connected = true)
+            adopt = false
+            adopted = blank(email).copy(accountEmail = email, connected = true)
         }
 
         _profiles.value =
@@ -139,7 +146,7 @@ class LiftRepository(context: Context) {
     // ------------------------------------------------------------------ write
 
     /** Record a lift. Returns the new entry so the caller can kick off a sync. */
-    fun logLift(machineId: String, weight: Int): LogEntry? {
+    fun logLift(machineId: String, weight: Int, difficulty: Difficulty? = null): LogEntry? {
         val machine = machine(machineId) ?: return null
         val clamped = Weights.clamp(weight)
         val now = System.currentTimeMillis()
@@ -157,6 +164,8 @@ class LiftRepository(context: Context) {
             weight = clamped,
             loggedAt = now,
             synced = false,
+            machineGroup = machine.group,
+            difficulty = difficulty,
         )
 
         mutateActive { profile ->
@@ -172,7 +181,11 @@ class LiftRepository(context: Context) {
             profile.copy(
                 log = profile.log.filterNot { it.id == entry.id } + entry,
                 machines = profile.machines.map {
-                    if (it.id == machineId) it.copy(lastWeight = clamped, lastLoggedAt = now) else it
+                    if (it.id == machineId) {
+                        it.copy(lastWeight = clamped, lastLoggedAt = now, lastDifficulty = difficulty)
+                    } else {
+                        it
+                    }
                 },
                 pendingDeletions = deletions,
             )
@@ -193,7 +206,11 @@ class LiftRepository(context: Context) {
                 log = profile.log.filterNot { it.id == entry.id },
                 machines = profile.machines.map {
                     if (it.id == machineId) {
-                        it.copy(lastWeight = restored?.weight, lastLoggedAt = restored?.loggedAt)
+                        it.copy(
+                            lastWeight = restored?.weight,
+                            lastLoggedAt = restored?.loggedAt,
+                            lastDifficulty = restored?.difficulty,
+                        )
                     } else {
                         it
                     }
@@ -209,6 +226,14 @@ class LiftRepository(context: Context) {
         profile.copy(
             machines = profile.machines.map {
                 if (it.id == machineId) it.copy(visible = visible) else it
+            }
+        )
+    }
+
+    fun setGroup(machineId: String, group: MachineGroup) = mutateActive { profile ->
+        profile.copy(
+            machines = profile.machines.map {
+                if (it.id == machineId) it.copy(group = group) else it
             }
         )
     }
@@ -284,6 +309,88 @@ class LiftRepository(context: Context) {
         profile.copy(
             log = emptyList(),
             machines = profile.machines.map { it.copy(lastWeight = null, lastLoggedAt = null) },
+        )
+    }
+
+    /**
+     * Merges rows read back from the Google Sheet into the active profile — the
+     * "restore from backup" flow. Purely additive: existing local entries are
+     * kept, sheet rows fill in whatever the phone doesn't already have (matched
+     * by Entry ID, so running this twice is harmless), and any exercise name
+     * the sheet knows about that isn't already a machine here gets created —
+     * hidden's not right for something with real history, so it comes back
+     * visible. Every machine's tile is then recomputed from the merged log.
+     */
+    fun restoreFromRows(rows: List<SheetRow>): RestoreSummary {
+        val before = current()
+        val existingIds = before.log.map { it.id }.toHashSet()
+        val byNameLower = before.machines.associateBy { it.name.lowercase() }.toMutableMap()
+        val createdMachines = mutableListOf<Machine>()
+        var nextOrder = (before.machines.maxOfOrNull { it.sortOrder } ?: -1) + 1
+
+        fun machineIdFor(row: SheetRow): String {
+            byNameLower[row.exercise.lowercase()]?.let { return it.id }
+            val group = MachineGroup.fromLabel(row.area) ?: MachineGroup.OTHER
+            val created = Machine(
+                id = "restored_" + UUID.randomUUID().toString().take(8),
+                name = row.exercise,
+                iconKey = "machine",
+                group = group,
+                visible = true,
+                custom = true,
+                sortOrder = nextOrder++,
+            )
+            byNameLower[created.name.lowercase()] = created
+            createdMachines += created
+            return created.id
+        }
+
+        val restoredEntries = rows.map { row ->
+            LogEntry(
+                id = row.entryId,
+                machineId = machineIdFor(row),
+                machineName = row.exercise,
+                weight = row.weight,
+                loggedAt = row.loggedAt,
+                synced = true,
+                machineGroup = MachineGroup.fromLabel(row.area) ?: MachineGroup.OTHER,
+                difficulty = Difficulty.fromLabel(row.difficultyLabel),
+            )
+        }
+
+        val addedCount = restoredEntries.count { it.id !in existingIds }
+
+        mutateActive { profile ->
+            val mergedById = LinkedHashMap<String, LogEntry>()
+            profile.log.forEach { mergedById[it.id] = it }
+            // Sheet rows win on a collision — they're the backup being restored.
+            restoredEntries.forEach { mergedById[it.id] = it }
+            val mergedLog = mergedById.values.toList()
+
+            val latestByMachine = mergedLog.groupBy { it.machineId }
+                .mapValues { (_, entries) -> entries.maxByOrNull { it.loggedAt } }
+
+            val allMachines = profile.machines + createdMachines
+            val updatedMachines = allMachines.map { m ->
+                val latest = latestByMachine[m.id]
+                if (latest != null) {
+                    m.copy(
+                        lastWeight = latest.weight,
+                        lastLoggedAt = latest.loggedAt,
+                        lastDifficulty = latest.difficulty,
+                    )
+                } else {
+                    m
+                }
+            }
+
+            profile.copy(log = mergedLog, machines = updatedMachines)
+        }
+
+        return RestoreSummary(
+            entriesAdded = addedCount,
+            entriesTotal = rows.size,
+            machinesCreated = createdMachines.size,
         )
     }
 
@@ -527,6 +634,7 @@ private fun Machine.toJson(): JSONObject = JSONObject().apply {
     put("illustrated", illustrated)
     if (lastWeight != null) put("lastWeight", lastWeight)
     if (lastLoggedAt != null) put("lastLoggedAt", lastLoggedAt)
+    if (lastDifficulty != null) put("lastDifficulty", lastDifficulty.name)
 }
 
 private fun JSONObject.toMachine(): Machine? {
@@ -542,6 +650,7 @@ private fun JSONObject.toMachine(): Machine? {
         lastWeight = if (has("lastWeight")) optInt("lastWeight") else null,
         lastLoggedAt = if (has("lastLoggedAt")) optLong("lastLoggedAt") else null,
         illustrated = optBoolean("illustrated", true),
+        lastDifficulty = Difficulty.fromName(optString("lastDifficulty").takeIf { it.isNotEmpty() }),
     )
 }
 
@@ -552,6 +661,8 @@ private fun LogEntry.toJson(): JSONObject = JSONObject().apply {
     put("weight", weight)
     put("loggedAt", loggedAt)
     put("synced", synced)
+    put("machineGroup", machineGroup.name)
+    if (difficulty != null) put("difficulty", difficulty.name)
 }
 
 private fun JSONObject.toLogEntry(): LogEntry? {
@@ -564,5 +675,7 @@ private fun JSONObject.toLogEntry(): LogEntry? {
         weight = optInt("weight"),
         loggedAt = optLong("loggedAt"),
         synced = optBoolean("synced", false),
+        machineGroup = MachineGroup.fromName(optString("machineGroup").takeIf { it.isNotEmpty() }),
+        difficulty = Difficulty.fromName(optString("difficulty").takeIf { it.isNotEmpty() }),
     )
 }

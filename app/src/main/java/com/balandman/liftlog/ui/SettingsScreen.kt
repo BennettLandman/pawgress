@@ -84,15 +84,18 @@ fun SettingsScreen(
     onSetAllVisible: (Boolean) -> Unit,
     onRename: (String, String) -> Unit,
     onSetIcon: (String, String, Boolean) -> Unit,
+    onSetGroup: (String, MachineGroup) -> Unit,
     onAddMachine: (String, String, MachineGroup, Boolean) -> Unit,
     onDeleteMachine: (String) -> Unit,
     onResetToday: () -> Unit,
     onFullReset: () -> Unit,
+    onRestoreFromSheet: () -> Unit,
 ) {
     var editing by remember { mutableStateOf<Machine?>(null) }
     var adding by remember { mutableStateOf(false) }
     var confirmingResetToday by remember { mutableStateOf(false) }
     var confirmingFullReset by remember { mutableStateOf(false) }
+    var confirmingRestore by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -119,6 +122,7 @@ fun SettingsScreen(
                     onChooseAccount = onChooseAccount,
                     onDisconnect = onDisconnectGoogle,
                     onSyncNow = onSyncNow,
+                    onRestore = { confirmingRestore = true },
                 )
             }
 
@@ -240,6 +244,32 @@ fun SettingsScreen(
         )
     }
 
+    if (confirmingRestore) {
+        AlertDialog(
+            onDismissRequest = { confirmingRestore = false },
+            title = { Text("Restore from Google Sheet?") },
+            text = {
+                Text(
+                    "This reads every row back out of your Google Sheet and adds " +
+                        "anything missing on this phone — matched by entry, so nothing " +
+                        "already here is duplicated. It never deletes or overwrites " +
+                        "local lifts, and it's safe to run more than once. Use this " +
+                        "after a reinstall, a new phone, or a Full reset to bring your " +
+                        "history back from your backup."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRestoreFromSheet()
+                    confirmingRestore = false
+                }) { Text("Restore") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingRestore = false }) { Text("Cancel") }
+            },
+        )
+    }
+
     if (adding) {
         MachineDialog(
             title = "Add a machine",
@@ -265,11 +295,12 @@ fun SettingsScreen(
             initialGroup = machine.group,
             initialIllustrated = machine.illustrated,
             canDelete = machine.custom,
-            groupEditable = false,
+            groupEditable = true,
             onDismiss = { editing = null },
-            onSave = { name, icon, _, illustrated ->
+            onSave = { name, icon, group, illustrated ->
                 onRename(machine.id, name)
                 onSetIcon(machine.id, icon, illustrated)
+                if (group != machine.group) onSetGroup(machine.id, group)
                 editing = null
             },
             onDelete = {
@@ -288,6 +319,7 @@ private fun GoogleCard(
     onChooseAccount: () -> Unit,
     onDisconnect: () -> Unit,
     onSyncNow: () -> Unit,
+    onRestore: () -> Unit,
 ) {
     val context = LocalContext.current
     val connectedEmail = syncState.accountEmail
@@ -338,6 +370,9 @@ private fun GoogleCard(
                             Text("Sign back in")
                         }
                     }
+                    TextButton(onClick = onRestore, enabled = !syncing) {
+                        Text("Restore from Google Sheet")
+                    }
                 }
 
                 else -> {
@@ -383,6 +418,9 @@ private fun GoogleCard(
                             Text("Switch account")
                         }
                         TextButton(onClick = onDisconnect) { Text("Stop syncing") }
+                    }
+                    TextButton(onClick = onRestore, enabled = !syncing) {
+                        Text("Restore from Google Sheet")
                     }
                 }
             }

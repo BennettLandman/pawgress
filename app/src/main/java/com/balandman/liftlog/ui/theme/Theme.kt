@@ -124,6 +124,47 @@ val LocalTileColors = staticCompositionLocalOf { LightTiles }
 val MachineArtChip = Color(0xFFFAF7F0)
 val MachineArtInk = Color(0xFF34403B)
 
+/**
+ * A calm-to-intense scale for how a set felt, fixed in both themes — like the
+ * artwork backdrop, this is a data color code, not a decoration, so it should
+ * read the same regardless of light/dark.
+ */
+object DifficultyColors {
+    val veryEasy = Color(0xFF6E9E78)
+    val easy = Color(0xFFA3C4A0)
+    val aboutRight = Color(0xFFC9BE8E)
+    val hard = Color(0xFFE0954F)
+    val veryHard = Color(0xFFC1543A)
+
+    fun forName(name: String?): Color? = when (name) {
+        "VERY_EASY" -> veryEasy
+        "EASY" -> easy
+        "ABOUT_RIGHT" -> aboutRight
+        "HARD" -> hard
+        "VERY_HARD" -> veryHard
+        else -> null
+    }
+}
+
+/**
+ * A muted accent per body area, used for the small on-tile group badge on the
+ * main grid — distinct from [DifficultyColors], which is a data code rather
+ * than a category label.
+ */
+object GroupColors {
+    val upper = Color(0xFFB96756)
+    val core = Color(0xFF6E7F76)
+    val lower = Color(0xFF978DAE)
+    val other = Color(0xFF8A968E)
+
+    fun forGroupName(name: String): Color = when (name) {
+        "UPPER" -> upper
+        "CORE" -> core
+        "LOWER" -> lower
+        else -> other
+    }
+}
+
 @Composable
 fun LiftLogTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

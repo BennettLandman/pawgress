@@ -1,6 +1,7 @@
 package com.balandman.liftlog.sync
 
 import com.balandman.liftlog.data.LogEntry
+import com.balandman.liftlog.data.SheetRow
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -10,6 +11,8 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
@@ -65,6 +68,60 @@ class SheetsApi(
         appendValues(token, id, listOf(HEADER))
         runCatching { formatHeader(token, id) }   // cosmetic only
         return SpreadsheetRef(id, url)
+    }
+
+    /**
+     * Rewrites just the header row to the current column set. Safe to call any
+     * time: it only ever touches row 1, so a sheet created before Area/Difficulty
+     * existed picks up the new headers without disturbing a single data row —
+     * older rows simply have blank cells under the new columns.
+     */
+    fun ensureHeaderUpToDate(token: String, spreadsheetId: String) {
+        val range = URLEncoder.encode("$SHEET_TITLE!A1", "UTF-8")
+        val values = JSONArray().put(JSONArray().apply { HEADER.forEach { put(it) } })
+        put(
+            "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$range" +
+                "?valueInputOption=USER_ENTERED",
+            token,
+            JSONObject().put("values", values)
+        )
+    }
+
+    /** Every data row in the log sheet, oldest first — the raw material for a restore. */
+    fun readAllRows(token: String, spreadsheetId: String): List<SheetRow> {
+        val range = URLEncoder.encode("$SHEET_TITLE!A2:G", "UTF-8")
+        val body = get(
+            "https://sheets.googleapis.com/v4/spreadsheets/$spreadsheetId/values/$range",
+            token
+        )
+        val rows = JSONObject(body).optJSONArray("values") ?: return emptyList()
+        val result = mutableListOf<SheetRow>()
+        for (i in 0 until rows.length()) {
+            val cells = rows.optJSONArray(i) ?: continue
+            fun cell(index: Int): String = cells.optString(index, "")
+
+            val date = cell(0)
+            val time = cell(1)
+            val exercise = cell(2)
+            val weightText = cell(3)
+            val entryId = cell(4)
+            val area = cell(5).takeIf { it.isNotBlank() }
+            val difficulty = cell(6).takeIf { it.isNotBlank() }
+
+            if (exercise.isBlank() || entryId.isBlank()) continue
+            val weight = weightText.toIntOrNull() ?: continue
+            val loggedAt = parseLoggedAt(date, time) ?: continue
+
+            result += SheetRow(
+                loggedAt = loggedAt,
+                exercise = exercise,
+                area = area,
+                weight = weight,
+                difficultyLabel = difficulty,
+                entryId = entryId,
+            )
+        }
+        return result
     }
 
     fun spreadsheetExists(token: String, spreadsheetId: String): Boolean = try {
@@ -241,6 +298,15 @@ class SheetsApi(
         return execute(request)
     }
 
+    private fun put(url: String, token: String, payload: JSONObject): String {
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $token")
+            .put(payload.toString().toRequestBody(JSON_MEDIA))
+            .build()
+        return execute(request)
+    }
+
     private fun execute(request: Request): String = client.newCall(request).execute().use { response ->
         val body = response.body?.string().orEmpty()
         if (!response.isSuccessful) {
@@ -272,7 +338,13 @@ class SheetsApi(
     companion object {
         private const val SHEET_TITLE = "Log"
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
-        private val HEADER = listOf("Date", "Time", "Exercise", "Weight (lb)", "Entry ID")
+
+        // Area and Difficulty were added after Entry ID was already column E on
+        // real sheets — they go on the end rather than between Exercise and
+        // Weight, so every existing row (and the hardcoded "E:E"/"A:G" ranges
+        // above) keeps meaning exactly what it always did.
+        private val HEADER =
+            listOf("Date", "Time", "Exercise", "Weight (lb)", "Entry ID", "Area", "Difficulty")
 
         private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
         private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -285,7 +357,17 @@ class SheetsApi(
                 machineName,
                 weight.toString(),
                 id,
+                machineGroup.label,
+                difficulty?.label.orEmpty(),
             )
+        }
+
+        private fun parseLoggedAt(date: String, time: String): Long? = try {
+            val d = LocalDate.parse(date, DATE_FORMAT)
+            val t = LocalTime.parse(time, TIME_FORMAT)
+            d.atTime(t).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        } catch (e: Exception) {
+            null
         }
     }
 }

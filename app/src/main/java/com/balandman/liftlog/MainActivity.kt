@@ -144,10 +144,12 @@ private fun AppRoot(
                     onSetAllVisible = viewModel::setAllVisible,
                     onRename = viewModel::rename,
                     onSetIcon = viewModel::setIcon,
+                    onSetGroup = viewModel::setGroup,
                     onAddMachine = viewModel::addMachine,
                     onDeleteMachine = viewModel::deleteMachine,
                     onResetToday = viewModel::resetToday,
                     onFullReset = viewModel::fullReset,
+                    onRestoreFromSheet = { viewModel.restoreFromSheet(context) },
                 )
 
                 "funfacts" -> FunFactsScreen(
@@ -180,7 +182,7 @@ private fun AppRoot(
         LogSheet(
             machine = sheetMachine,
             onDismiss = { sheetMachineId = null },
-            onConfirm = { weight -> viewModel.logLift(sheetMachine.id, weight) },
+            onConfirm = { weight, difficulty -> viewModel.logLift(sheetMachine.id, weight, difficulty) },
             onUndo = { viewModel.undoToday(sheetMachine.id) },
         )
     }

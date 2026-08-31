@@ -2,6 +2,9 @@
 
 package com.balandman.liftlog.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +17,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -26,18 +30,22 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.balandman.liftlog.data.Difficulty
 import com.balandman.liftlog.data.GymDay
 import com.balandman.liftlog.data.Machine
 import com.balandman.liftlog.data.Weights
+import com.balandman.liftlog.ui.theme.DifficultyColors
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -54,7 +62,7 @@ private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a
 fun LogSheet(
     machine: Machine,
     onDismiss: () -> Unit,
-    onConfirm: (Int) -> Unit,
+    onConfirm: (Int, Difficulty?) -> Unit,
     onUndo: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -63,6 +71,9 @@ fun LogSheet(
 
     var weight by remember(machine.id) {
         mutableIntStateOf(machine.lastWeight ?: Weights.DEFAULT)
+    }
+    var difficulty by remember(machine.id) {
+        mutableStateOf<Difficulty?>(null)
     }
 
     fun close(after: () -> Unit = {}) {
@@ -168,8 +179,21 @@ fun LogSheet(
 
             Spacer(Modifier.height(20.dp))
 
+            Text(
+                text = "How did it feel? (optional)",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            DifficultyPicker(
+                selected = difficulty,
+                onSelect = { difficulty = if (difficulty == it) null else it },
+            )
+
+            Spacer(Modifier.height(20.dp))
+
             Button(
-                onClick = { close { onConfirm(weight) } },
+                onClick = { close { onConfirm(weight, difficulty) } },
                 modifier = Modifier.fillMaxWidth().height(64.dp),
                 shape = MaterialTheme.shapes.large,
             ) {
@@ -207,6 +231,65 @@ private val LAST_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M
 
 /** Discrete stops the slider can land on, between the two endpoints. */
 private val STEP_COUNT = ((Weights.MAX - Weights.MIN) / Weights.STEP) - 1
+
+/**
+ * Five color-coded pills, one per [Difficulty]. Tapping the one already
+ * selected clears it — the rating is optional, and there should always be an
+ * easy way back to "didn't say".
+ */
+@Composable
+private fun DifficultyPicker(
+    selected: Difficulty?,
+    onSelect: (Difficulty) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Difficulty.entries.forEach { level ->
+            val color = DifficultyColors.forName(level.name) ?: MaterialTheme.colorScheme.outline
+            val isSelected = level == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(52.dp)
+                    .clickable { onSelect(level) }
+                    .background(
+                        color = if (isSelected) color else color.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                    .border(
+                        width = if (isSelected) 0.dp else 1.dp,
+                        color = color.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(12.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = abbreviate(level),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    color = if (isSelected) bestOnColor(color) else color,
+                )
+            }
+        }
+    }
+}
+
+private fun abbreviate(level: Difficulty): String = when (level) {
+    Difficulty.VERY_EASY -> "V.Easy"
+    Difficulty.EASY -> "Easy"
+    Difficulty.ABOUT_RIGHT -> "OK"
+    Difficulty.HARD -> "Hard"
+    Difficulty.VERY_HARD -> "V.Hard"
+}
+
+/** Cheap luminance check so the pill label stays legible on any fixed data color. */
+private fun bestOnColor(background: Color): Color {
+    val luminance = 0.299f * background.red + 0.587f * background.green + 0.114f * background.blue
+    return if (luminance > 0.6f) Color(0xFF2A322E) else Color.White
+}
 
 @Composable
 private fun StepButton(label: String, enabled: Boolean, onClick: () -> Unit) {

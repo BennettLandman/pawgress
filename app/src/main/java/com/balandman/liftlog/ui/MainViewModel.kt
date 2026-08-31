@@ -8,6 +8,7 @@ import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.balandman.liftlog.LiftLogApp
+import com.balandman.liftlog.data.Difficulty
 import com.balandman.liftlog.data.Machine
 import com.balandman.liftlog.data.MachineGroup
 import com.balandman.liftlog.data.SyncState
@@ -63,10 +64,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var autoSyncJob: Job? = null
 
+    /**
+     * Whether the consent screen currently in flight was opened for a restore
+     * rather than a regular sync — [onConsentResult] uses this to route the
+     * token it gets back to the right [SyncManager] call.
+     */
+    private var pendingRestore = false
+
     // ------------------------------------------------------------------ logging
 
-    fun logLift(machineId: String, weight: Int) {
-        repo.logLift(machineId, weight)
+    fun logLift(machineId: String, weight: Int, difficulty: Difficulty? = null) {
+        repo.logLift(machineId, weight, difficulty)
         scheduleAutoSync()
     }
 
@@ -85,6 +93,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setIcon(machineId: String, iconKey: String, illustrated: Boolean) =
         repo.setIcon(machineId, iconKey, illustrated)
+
+    fun setGroup(machineId: String, group: MachineGroup) = repo.setGroup(machineId, group)
 
     fun addMachine(name: String, iconKey: String, group: MachineGroup, illustrated: Boolean) {
         val created = repo.addCustomMachine(name, iconKey, group, illustrated)
@@ -133,6 +143,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Settings → "Restore from Google Sheet": reads the profile's own
+     * spreadsheet back in and merges anything missing locally. Safe to run
+     * any time — it never removes local data, only adds to it.
+     */
+    fun restoreFromSheet(context: Context) {
+        if (_syncing.value) return
+        autoSyncJob?.cancel()
+        pendingRestore = true
+        viewModelScope.launch {
+            _syncing.value = true
+            try {
+                handle(syncManager.restore(context, allowConsentUi = true), announce = true)
+            } finally {
+                _syncing.value = false
+            }
+        }
+    }
+
+    /**
      * Batches a workout's worth of taps into one upload — during a session you
      * log a machine every couple of minutes, and each one need not be a request.
      */
@@ -152,6 +181,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         announce: Boolean = true,
     ) {
         if (_syncing.value) return
+        pendingRestore = false
         _syncing.value = true
         try {
             handle(syncManager.sync(context, allowConsentUi, account), announce)
@@ -169,9 +199,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             when (val outcome = GoogleAuth.resultFromIntent(context, data)) {
                 is AuthOutcome.Success -> {
+                    val wasRestore = pendingRestore
+                    pendingRestore = false
                     _syncing.value = true
                     try {
-                        handle(syncManager.syncWithToken(outcome.accessToken), announce = true)
+                        val result = if (wasRestore) {
+                            syncManager.restoreWithToken(outcome.accessToken)
+                        } else {
+                            syncManager.syncWithToken(outcome.accessToken)
+                        }
+                        handle(result, announce = true)
                     } finally {
                         _syncing.value = false
                     }
@@ -192,7 +229,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             SyncResult.NothingToDo -> if (announce) _message.value = "Already up to date."
             SyncResult.NotConnected ->
                 if (announce) _message.value = "Connect a Google account first."
+            is SyncResult.Restored -> if (announce) _message.value = restoreMessage(result.summary)
         }
+    }
+
+    private fun restoreMessage(summary: com.balandman.liftlog.data.RestoreSummary): String {
+        if (summary.entriesAdded == 0 && summary.machinesCreated == 0) {
+            return "Already up to date — nothing new in the sheet."
+        }
+        val parts = mutableListOf("Restored ${summary.entriesAdded} lift(s)")
+        if (summary.machinesCreated > 0) {
+            parts += "${summary.machinesCreated} new exercise(s)"
+        }
+        return parts.joinToString(" and ") + " from your Google Sheet."
     }
 
     fun disconnect() {

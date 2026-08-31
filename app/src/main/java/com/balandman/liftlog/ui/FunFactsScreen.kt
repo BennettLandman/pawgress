@@ -2,6 +2,7 @@
 
 package com.balandman.liftlog.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -33,7 +35,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.balandman.liftlog.data.GymDay
@@ -58,6 +62,13 @@ fun FunFactsScreen(
     val today = GymDay.today()
     val filtered = remember(log, range, today) { filterByRange(log, range, today) }
     val streak = remember(log, today) { currentStreak(log, today) }
+
+    // Randomized once per visit to this screen, not on every recomposition —
+    // re-entering "Fun Facts" is what earns the cat a fresh line.
+    val mascotDrawable = remember { MascotCatalog.random() }
+    val saying = remember(log) {
+        MotivationCatalog.randomSaying(MotivationStats.from(log, today))
+    }
 
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
@@ -92,6 +103,10 @@ fun FunFactsScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {
+                MascotCard(mascotDrawable = mascotDrawable, saying = saying)
+            }
+
+            item {
                 StreakCard(streak)
             }
 
@@ -110,6 +125,40 @@ fun FunFactsScreen(
             }
 
             item { Spacer(Modifier.height(24.dp)) }
+        }
+    }
+}
+
+/**
+ * The motivational cat. Shows the mascot art once at least one mascot_NN
+ * drawable exists — until then, just the saying, so the card still earns its
+ * place on the screen rather than sitting there half-built.
+ */
+@Composable
+private fun MascotCard(mascotDrawable: Int?, saying: String) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (mascotDrawable != null) {
+                Image(
+                    painter = painterResource(mascotDrawable),
+                    contentDescription = "Motivational cat",
+                    modifier = Modifier.size(120.dp),
+                )
+                Spacer(Modifier.height(10.dp))
+            }
+            Text(
+                text = saying,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
         }
     }
 }
