@@ -103,6 +103,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Pass null to switch a coach back to its base look. */
     fun equipOutfit(coachId: Int, theme: CoachTheme?) = repo.equipOutfit(coachId, theme)
 
+    /** DEBUG ONLY — remove before release, along with the Settings button that calls this. */
+    fun debugGrantPawprints() {
+        repo.debugGrantPawprints(1000)
+        _message.value = "Debug: +1000 pawprints"
+    }
+
     private var autoSyncJob: Job? = null
 
     /**

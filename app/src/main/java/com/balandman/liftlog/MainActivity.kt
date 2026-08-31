@@ -156,6 +156,8 @@ private fun AppRoot(
                     onResetToday = viewModel::resetToday,
                     onFullReset = viewModel::fullReset,
                     onRestoreFromSheet = { viewModel.restoreFromSheet(context) },
+                    // DEBUG ONLY — remove along with the button in Settings before release.
+                    onDebugGrantPawprints = viewModel::debugGrantPawprints,
                 )
 
                 "funfacts" -> FunFactsScreen(

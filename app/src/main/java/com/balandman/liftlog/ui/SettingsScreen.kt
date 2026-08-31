@@ -92,6 +92,8 @@ fun SettingsScreen(
     onResetToday: () -> Unit,
     onFullReset: () -> Unit,
     onRestoreFromSheet: () -> Unit,
+    // DEBUG ONLY — remove this parameter (and the section that uses it) before release.
+    onDebugGrantPawprints: () -> Unit,
 ) {
     var editing by remember { mutableStateOf<Machine?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -199,6 +201,8 @@ fun SettingsScreen(
                 )
             }
             item { CreditsSection() }
+            // DEBUG ONLY — remove this entire item (and DebugSection below) before release.
+            item { DebugSection(onGrantPawprints = onDebugGrantPawprints) }
             item { Spacer(Modifier.height(32.dp)) }
         }
     }
@@ -754,5 +758,40 @@ private fun CreditsSection() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+/**
+ * DEBUG ONLY — delete this entire composable (and its call site above,
+ * and `LiftRepository.debugGrantPawprints` / `MainViewModel.debugGrantPawprints`)
+ * before release. Exists purely to test the coach/outfit economy without
+ * grinding out real gym-day logs, so it's kept at the very bottom, below
+ * Credits, and visually flagged as debug-only rather than styled to look
+ * like a normal setting.
+ */
+@Composable
+private fun DebugSection(onGrantPawprints: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 8.dp)) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "Debug — remove before release",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Testing tools only. Not meant to ship.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onGrantPawprints,
+            modifier = Modifier.fillMaxWidth(),
+            colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.error,
+            ),
+        ) { Text("Give 1000 pawprints") }
     }
 }

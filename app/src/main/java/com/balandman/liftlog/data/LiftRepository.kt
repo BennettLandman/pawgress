@@ -387,6 +387,17 @@ class LiftRepository(context: Context) {
     }
 
     /**
+     * DEBUG ONLY — remove before release. Adds [amount] straight to the
+     * spendable balance so the coach/outfit economy can be tested without
+     * grinding out real gym-day logs. Deliberately leaves
+     * [Profile.pawprintsEarnedTotal] untouched, since that number is meant to
+     * reflect lifetime pawprints actually earned by lifting.
+     */
+    fun debugGrantPawprints(amount: Int) = mutateActive { profile ->
+        profile.copy(pawprintsBalance = profile.pawprintsBalance + amount)
+    }
+
+    /**
      * Merges rows read back from the Google Sheet into the active profile — the
      * "restore from backup" flow. Purely additive: existing local entries are
      * kept, sheet rows fill in whatever the phone doesn't already have (matched
