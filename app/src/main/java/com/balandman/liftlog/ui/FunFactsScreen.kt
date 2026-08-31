@@ -50,7 +50,9 @@ private enum class FactsRange(val label: String) {
     TODAY("Today"),
     WEEK("This Week"),
     MONTH("This Month"),
-    ALL("All Time"),
+    // "All Time" doesn't fit the chip on one line next to the others — the
+    // infinity symbol says the same thing and always fits.
+    ALL("∞"),
 }
 
 @Composable

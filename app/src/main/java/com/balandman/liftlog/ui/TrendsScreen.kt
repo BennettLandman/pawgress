@@ -66,7 +66,9 @@ private enum class TrendRange(val label: String) {
     WEEK("This Week"),
     MONTH("This Month"),
     YEAR("This Year"),
-    ALL("All Time"),
+    // "All Time" doesn't fit the chip on one line next to the others — the
+    // infinity symbol says the same thing and always fits.
+    ALL("∞"),
 }
 
 /**

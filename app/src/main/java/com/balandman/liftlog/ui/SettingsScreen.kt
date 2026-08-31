@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -64,6 +65,7 @@ import com.balandman.liftlog.data.Machine
 import com.balandman.liftlog.data.MachineCatalog
 import com.balandman.liftlog.data.MachineGroup
 import com.balandman.liftlog.data.SyncState
+import com.balandman.liftlog.ui.theme.GroupColors
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -159,12 +161,25 @@ fun SettingsScreen(
                 if (inGroup.isEmpty()) return@forEach
 
                 item(key = "header_${group.name}") {
-                    Text(
-                        text = group.label,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
-                    )
+                    ) {
+                        // The same colored dot used for this area on the main
+                        // grid's tiles — so the two screens read as one system
+                        // when you flip back and forth.
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .background(GroupColors.forGroupName(group.name), CircleShape),
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            text = group.label,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
 
                 items(inGroup, key = { it.id }) { machine ->
@@ -453,6 +468,16 @@ private fun MachineRow(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Carries the main grid's area-color dot into this list, so a machine
+        // reads as the same color here as it does on its tile — a small thing,
+        // but it's what makes the grouping legible once the header has
+        // scrolled out of view.
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(GroupColors.forGroupName(machine.group.name), CircleShape),
+        )
+        Spacer(Modifier.size(10.dp))
         MachineArt(iconKey = machine.iconKey, size = 34.dp, illustrated = machine.illustrated)
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f)) {
@@ -521,6 +546,16 @@ private fun MachineDialog(
                                 selected = group == option,
                                 onClick = { group = option },
                                 label = { Text(option.label) },
+                                leadingIcon = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .background(
+                                                GroupColors.forGroupName(option.name),
+                                                CircleShape,
+                                            ),
+                                    )
+                                },
                             )
                         }
                     }
