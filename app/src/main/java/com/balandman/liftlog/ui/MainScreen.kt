@@ -23,9 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,11 +63,11 @@ private val GROUP_ORDER = listOf(
 @Composable
 fun MainScreen(
     machines: List<Machine>,
-    syncing: Boolean,
+    pawprintsBalance: Int,
     onOpenSettings: () -> Unit,
     onOpenFunFacts: () -> Unit,
     onOpenTrends: () -> Unit,
-    onSyncNow: () -> Unit,
+    onOpenCoach: () -> Unit,
     onTapMachine: (Machine) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -102,15 +100,23 @@ fun MainScreen(
                 }
             },
             actions = {
-                if (syncing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp).padding(end = 4.dp),
-                        strokeWidth = 2.dp,
+                // Pawprint balance doubles as the entry point to the coach
+                // screen — tapping it opens the same place Settings does,
+                // just for the gamification side of the app.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable(onClick = onOpenCoach)
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                ) {
+                    Text("🐾", fontSize = 16.sp)
+                    Spacer(Modifier.size(3.dp))
+                    Text(
+                        "$pawprintsBalance",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                } else {
-                    IconButton(onClick = onSyncNow) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Sync to Google Sheets")
-                    }
                 }
                 IconButton(onClick = onOpenSettings) {
                     Icon(Icons.Filled.Settings, contentDescription = "Settings")

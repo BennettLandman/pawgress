@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.balandman.liftlog.sync.AccountPicker
+import com.balandman.liftlog.ui.CoachScreen
 import com.balandman.liftlog.ui.FunFactsScreen
 import com.balandman.liftlog.ui.LogSheet
 import com.balandman.liftlog.ui.MainScreen
@@ -94,12 +95,17 @@ private fun AppRoot(
     val message by viewModel.message.collectAsStateWithLifecycle()
     val consentRequest by viewModel.consentRequest.collectAsStateWithLifecycle()
     val accountPickerRequest by viewModel.accountPickerRequest.collectAsStateWithLifecycle()
+    val pawprintsBalance by viewModel.pawprintsBalance.collectAsStateWithLifecycle()
+    val unlockedCoachIds by viewModel.unlockedCoachIds.collectAsStateWithLifecycle()
+    val selectedCoachId by viewModel.selectedCoachId.collectAsStateWithLifecycle()
+    val unlockedOutfits by viewModel.unlockedOutfits.collectAsStateWithLifecycle()
+    val equippedOutfits by viewModel.equippedOutfits.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // "main" | "settings" | "funfacts" | "trends" — a plain string survives
-    // process death via rememberSaveable with no custom Saver to write.
+    // "main" | "settings" | "funfacts" | "trends" | "coach" — a plain string
+    // survives process death via rememberSaveable with no custom Saver to write.
     var screen by rememberSaveable { mutableStateOf("main") }
     var sheetMachineId by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -154,6 +160,8 @@ private fun AppRoot(
 
                 "funfacts" -> FunFactsScreen(
                     log = log,
+                    selectedCoachId = selectedCoachId,
+                    equippedOutfits = equippedOutfits,
                     onBack = { screen = "main" },
                 )
 
@@ -163,13 +171,26 @@ private fun AppRoot(
                     onBack = { screen = "main" },
                 )
 
+                "coach" -> CoachScreen(
+                    pawprintsBalance = pawprintsBalance,
+                    unlockedCoachIds = unlockedCoachIds,
+                    selectedCoachId = selectedCoachId,
+                    unlockedOutfits = unlockedOutfits,
+                    equippedOutfits = equippedOutfits,
+                    onBack = { screen = "main" },
+                    onSelectCoach = viewModel::selectCoach,
+                    onUnlockCoach = viewModel::unlockCoach,
+                    onUnlockOutfit = viewModel::unlockOutfit,
+                    onEquipOutfit = viewModel::equipOutfit,
+                )
+
                 else -> MainScreen(
                     machines = visibleMachines,
-                    syncing = syncing,
+                    pawprintsBalance = pawprintsBalance,
                     onOpenSettings = { screen = "settings" },
                     onOpenFunFacts = { screen = "funfacts" },
                     onOpenTrends = { screen = "trends" },
-                    onSyncNow = { viewModel.syncNow(context) },
+                    onOpenCoach = { screen = "coach" },
                     onTapMachine = { sheetMachineId = it.id },
                 )
             }

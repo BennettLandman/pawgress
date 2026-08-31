@@ -239,7 +239,9 @@ fun SettingsScreen(
                     "This permanently erases every lift you've ever logged in " +
                         "Pawgress and blanks every tile back to —. Your machines, " +
                         "their names, icons, and hidden/shown choices are untouched, " +
-                        "and you'll stay signed in to Google. This does not delete " +
+                        "and you'll stay signed in to Google. Your pawprints, " +
+                        "unlocked coaches and unlocked outfits are untouched too — " +
+                        "this only resets the workout log. This does not delete " +
                         "anything already saved in your Google Sheet — that " +
                         "history stays exactly as it is; only what's on this phone " +
                         "is cleared. This can't be undone."

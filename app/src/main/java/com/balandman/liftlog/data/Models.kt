@@ -1,5 +1,8 @@
 package com.balandman.liftlog.data
 
+import java.time.LocalDate
+import java.time.MonthDay
+
 /** Muscle-group buckets, used only to group the settings list. */
 enum class MachineGroup(val label: String) {
     UPPER("Upper body"),
@@ -101,10 +104,61 @@ data class Profile(
     val lastSyncAt: Long? = null,
     val lastError: String? = null,
     val pendingDeletions: List<String> = emptyList(),
+    /** Spendable currency: one pawprint per machine, per gym-day, first log only. */
+    val pawprintsBalance: Int = 0,
+    /** Lifetime earned, never decremented — a fun-facts style counter, not a wallet. */
+    val pawprintsEarnedTotal: Int = 0,
+    /** Coach id 1 (Coach Moose) is free and always unlocked. */
+    val unlockedCoachIds: Set<Int> = setOf(1),
+    /** Which coach currently fronts the Fun Facts screen. */
+    val selectedCoachId: Int = 1,
+    /** Owned outfits, keyed by "coachId:themeSlug" — see [CoachCatalog.outfitKey]. */
+    val unlockedOutfits: Set<String> = emptySet(),
+    /** Which outfit (theme slug) is currently equipped per coach id, if any. */
+    val equippedOutfits: Map<Int, String> = emptyMap(),
 ) {
     companion object {
         /** The profile used before anyone has ever signed in. */
         const val LOCAL_KEY = "local"
+    }
+}
+
+/**
+ * Seasonal outfit theme. Every coach shares the same wardrobe. A theme is only
+ * purchasable/wearable while [isActiveOn] its real-world date window — the
+ * chosen outfit is still remembered outside the window (see
+ * [Profile.equippedOutfits]), it just silently stops rendering until the
+ * window comes back around next year.
+ */
+enum class CoachTheme(
+    val slug: String,
+    val displayName: String,
+    private val start: MonthDay,
+    private val end: MonthDay,
+) {
+    NEW_YEAR("newyear", "New Year Sparkle", MonthDay.of(1, 1), MonthDay.of(1, 7)),
+    VALENTINE("valentine", "Valentine's", MonthDay.of(2, 1), MonthDay.of(2, 14)),
+    SPRING("spring", "Spring Bloom", MonthDay.of(3, 15), MonthDay.of(4, 15)),
+    SUMMER("summer", "Summer Shades", MonthDay.of(6, 1), MonthDay.of(8, 31)),
+    BACK_TO_SCHOOL("backtoschool", "Back-to-School", MonthDay.of(8, 15), MonthDay.of(9, 15)),
+    HALLOWEEN("halloween", "Halloween", MonthDay.of(10, 1), MonthDay.of(10, 31)),
+    THANKSGIVING("thanksgiving", "Thanksgiving Harvest", MonthDay.of(11, 1), MonthDay.of(11, 30)),
+    WINTER_HOLIDAY("winterholiday", "Winter Holiday", MonthDay.of(12, 1), MonthDay.of(12, 25));
+
+    /** True when [date] falls within this theme's real-world window, every year. */
+    fun isActiveOn(date: LocalDate): Boolean {
+        val md = MonthDay.of(date.month, date.dayOfMonth)
+        return if (start <= end) {
+            md >= start && md <= end
+        } else {
+            // Not used by any window above, but keeps a future New Year's-spanning
+            // theme (e.g. Dec 26-Jan 2) correct without touching this method.
+            md >= start || md <= end
+        }
+    }
+
+    companion object {
+        fun fromSlug(value: String?): CoachTheme? = entries.firstOrNull { it.slug == value }
     }
 }
 

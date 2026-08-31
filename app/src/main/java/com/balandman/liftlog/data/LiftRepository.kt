@@ -168,6 +168,10 @@ class LiftRepository(context: Context) {
             difficulty = difficulty,
         )
 
+        // A pawprint is earned once per machine per gym day — only the *first*
+        // log of the day, never a same-day correction/re-log.
+        val earnedPawprint = existingToday == null
+
         mutateActive { profile ->
             // A stale row already in the sheet gets queued for removal, so the
             // corrected value does not end up sitting next to the wrong one.
@@ -188,12 +192,20 @@ class LiftRepository(context: Context) {
                     }
                 },
                 pendingDeletions = deletions,
+                pawprintsBalance = if (earnedPawprint) profile.pawprintsBalance + 1 else profile.pawprintsBalance,
+                pawprintsEarnedTotal =
+                    if (earnedPawprint) profile.pawprintsEarnedTotal + 1 else profile.pawprintsEarnedTotal,
             )
         }
         return entry
     }
 
-    /** Undo today's entry for a machine, restoring the previously shown weight. */
+    /**
+     * Undo today's entry for a machine, restoring the previously shown weight.
+     * Since only the first log of a gym day ever earns a pawprint, and there is
+     * only ever one entry per machine per day, undoing today's entry always
+     * refunds exactly the one pawprint it earned.
+     */
     fun undoToday(machineId: String) {
         val entry = current().log.firstOrNull {
             it.machineId == machineId && GymDay.isToday(it.loggedAt)
@@ -218,6 +230,7 @@ class LiftRepository(context: Context) {
                 pendingDeletions =
                     if (entry.synced) profile.pendingDeletions + entry.id
                     else profile.pendingDeletions,
+                pawprintsBalance = (profile.pawprintsBalance - 1).coerceAtLeast(0),
             )
         }
     }
@@ -304,12 +317,73 @@ class LiftRepository(context: Context) {
      * connection are all left exactly as they are. The Google Sheet — an
      * append-only record by design — is never touched: old rows already synced
      * there stay put, since this is a reset of the phone, not of that history.
+     * Pawprint balance, unlocked coaches and unlocked outfits are earned, paid
+     * for and kept independently of the workout log, so this leaves all of them
+     * untouched too.
      */
     fun fullReset() = mutateActive { profile ->
         profile.copy(
             log = emptyList(),
             machines = profile.machines.map { it.copy(lastWeight = null, lastLoggedAt = null) },
         )
+    }
+
+    // --------------------------------------------------------------- coaches
+
+    /** Unlocks [coachId] for [cost] pawprints. Returns true if it just happened. */
+    fun unlockCoach(coachId: Int, cost: Int): Boolean {
+        val profile = current()
+        if (coachId in profile.unlockedCoachIds) return false
+        if (profile.pawprintsBalance < cost) return false
+        mutateActive {
+            it.copy(
+                pawprintsBalance = it.pawprintsBalance - cost,
+                unlockedCoachIds = it.unlockedCoachIds + coachId,
+            )
+        }
+        return true
+    }
+
+    /** Switches which coach fronts the Fun Facts screen. No-op if not unlocked. */
+    fun selectCoach(coachId: Int) {
+        if (coachId !in current().unlockedCoachIds) return
+        mutateActive { it.copy(selectedCoachId = coachId) }
+    }
+
+    /**
+     * Unlocks [theme] for [coachId] at [cost] pawprints — the coach must
+     * already be unlocked, and this exact coach+theme combo not already owned.
+     * Returns true if it just happened.
+     */
+    fun unlockOutfit(coachId: Int, theme: CoachTheme, cost: Int): Boolean {
+        val profile = current()
+        if (coachId !in profile.unlockedCoachIds) return false
+        val key = outfitKey(coachId, theme)
+        if (key in profile.unlockedOutfits) return false
+        if (profile.pawprintsBalance < cost) return false
+        mutateActive {
+            it.copy(
+                pawprintsBalance = it.pawprintsBalance - cost,
+                unlockedOutfits = it.unlockedOutfits + key,
+            )
+        }
+        return true
+    }
+
+    /**
+     * Equips [theme] for [coachId], or clears it back to the base look when
+     * [theme] is null. Only an owned theme can be equipped. Whether the
+     * equipped theme actually renders still depends on whether it's currently
+     * in season and whether its art has been supplied — see `CoachArt.current`.
+     */
+    fun equipOutfit(coachId: Int, theme: CoachTheme?) {
+        val profile = current()
+        if (theme != null && outfitKey(coachId, theme) !in profile.unlockedOutfits) return
+        mutateActive {
+            val updated = it.equippedOutfits.toMutableMap()
+            if (theme == null) updated.remove(coachId) else updated[coachId] = theme.slug
+            it.copy(equippedOutfits = updated)
+        }
     }
 
     /**
@@ -320,6 +394,8 @@ class LiftRepository(context: Context) {
      * the sheet knows about that isn't already a machine here gets created —
      * hidden's not right for something with real history, so it comes back
      * visible. Every machine's tile is then recomputed from the merged log.
+     * Restored history never retroactively earns pawprints — those are only
+     * ever awarded live, at the moment a lift is logged.
      */
     fun restoreFromRows(rows: List<SheetRow>): RestoreSummary {
         val before = current()
@@ -566,6 +642,23 @@ private fun Profile.toJson(): JSONObject = JSONObject().apply {
     val deletions = JSONArray()
     pendingDeletions.forEach { deletions.put(it) }
     put("pendingDeletions", deletions)
+
+    put("pawprintsBalance", pawprintsBalance)
+    put("pawprintsEarnedTotal", pawprintsEarnedTotal)
+
+    val coachIds = JSONArray()
+    unlockedCoachIds.forEach { coachIds.put(it) }
+    put("unlockedCoachIds", coachIds)
+
+    put("selectedCoachId", selectedCoachId)
+
+    val outfits = JSONArray()
+    unlockedOutfits.forEach { outfits.put(it) }
+    put("unlockedOutfits", outfits)
+
+    val equipped = JSONObject()
+    equippedOutfits.forEach { (coachId, slug) -> equipped.put(coachId.toString(), slug) }
+    put("equippedOutfits", equipped)
 }
 
 private fun JSONObject.toProfile(key: String): Profile {
@@ -591,10 +684,33 @@ private fun JSONObject.toProfile(key: String): Profile {
                 (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotEmpty) }
             }
             .orEmpty(),
+        pawprintsBalance = optInt("pawprintsBalance", 0),
+        pawprintsEarnedTotal = optInt("pawprintsEarnedTotal", 0),
+        unlockedCoachIds = optJSONArray("unlockedCoachIds")
+            ?.let { array -> (0 until array.length()).map { array.optInt(it) }.toSet() }
+            ?.takeIf { it.isNotEmpty() }
+            ?: setOf(1),
+        selectedCoachId = optInt("selectedCoachId", 1),
+        unlockedOutfits = optJSONArray("unlockedOutfits")
+            ?.let { array ->
+                (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotEmpty) }.toSet()
+            }
+            .orEmpty(),
+        equippedOutfits = optJSONObject("equippedOutfits")
+            ?.let { obj ->
+                obj.keys().asSequence().mapNotNull { k -> k.toIntOrNull()?.let { id -> id to obj.optString(k) } }
+                    .toMap()
+            }
+            .orEmpty(),
     )
 }
 
-/** Reads the flat, single-profile layout written before profiles existed. */
+/**
+ * Reads the flat, single-profile layout written before profiles — and before
+ * gamification — existed. No explicit parsing needed for the pawprint/coach
+ * fields: [Profile]'s own constructor defaults (free coach unlocked, zero
+ * balance) already cover a file this old.
+ */
 private fun JSONObject.toLegacyProfile(): Profile {
     val sync = optJSONObject("sync")
     val email = sync?.optString("accountEmail")?.takeIf { it.isNotEmpty() }

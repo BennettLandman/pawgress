@@ -3,6 +3,8 @@
 package com.balandman.liftlog.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -35,11 +38,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.balandman.liftlog.data.CoachCatalog
 import com.balandman.liftlog.data.GymDay
 import com.balandman.liftlog.data.LogEntry
 import java.time.LocalDate
@@ -58,6 +71,8 @@ private enum class FactsRange(val label: String) {
 @Composable
 fun FunFactsScreen(
     log: List<LogEntry>,
+    selectedCoachId: Int,
+    equippedOutfits: Map<Int, String>,
     onBack: () -> Unit,
 ) {
     var range by remember { mutableStateOf(FactsRange.TODAY) }
@@ -65,11 +80,17 @@ fun FunFactsScreen(
     val filtered = remember(log, range, today) { filterByRange(log, range, today) }
     val streak = remember(log, today) { currentStreak(log, today) }
 
-    // Randomized once per visit to this screen, not on every recomposition —
-    // re-entering "Fun Facts" is what earns the cat a fresh line.
-    val mascotDrawable = remember { MascotCatalog.random() }
-    val saying = remember(log) {
-        MotivationCatalog.randomSaying(MotivationStats.from(log, today))
+    // The selected coach fully replaces the random mascot here — its own
+    // portrait (base look, or its current seasonal outfit if one's equipped
+    // and in season) and its own voice. Randomized once per visit to this
+    // screen, not on every recomposition, so re-entering "Fun Facts" is what
+    // earns a fresh line.
+    val mascotDrawable = remember(selectedCoachId, equippedOutfits, today) {
+        CoachArt.current(selectedCoachId, equippedOutfits[selectedCoachId], today)
+    }
+    val coachName = remember(selectedCoachId) { CoachCatalog.byId(selectedCoachId)?.name }
+    val saying = remember(log, selectedCoachId) {
+        CoachVoice.randomSaying(selectedCoachId, MotivationStats.from(log, today))
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -105,7 +126,7 @@ fun FunFactsScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {
-                MascotCard(mascotDrawable = mascotDrawable, saying = saying)
+                MascotCard(mascotDrawable = mascotDrawable, coachName = coachName, saying = saying)
             }
 
             item {
@@ -132,36 +153,115 @@ fun FunFactsScreen(
 }
 
 /**
- * The motivational cat. Shows the mascot art once at least one mascot_NN
- * drawable exists — until then, just the saying, so the card still earns its
- * place on the screen rather than sitting there half-built.
+ * The motivational cat — the selected coach, once one has been picked on the
+ * Coach screen. Portrait on the left (once its art exists) with its name
+ * underneath, its line in a cartoon speech bubble on the right, tail pointing
+ * back at the portrait. With no portrait, there's nowhere to anchor a name
+ * under, so the bubble just takes the full width on its own — the tail is a
+ * nice touch, not something the layout depends on.
  */
 @Composable
-private fun MascotCard(mascotDrawable: Int?, saying: String) {
+private fun MascotCard(mascotDrawable: Int?, coachName: String?, saying: String) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(
+        Row(
             modifier = Modifier.padding(16.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             if (mascotDrawable != null) {
-                Image(
-                    painter = painterResource(mascotDrawable),
-                    contentDescription = "Motivational cat",
-                    modifier = Modifier.size(120.dp),
-                )
-                Spacer(Modifier.height(10.dp))
+                // 50% bigger than the original 120dp portrait, now anchored to
+                // the left so the speech bubble has somewhere to point at.
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Image(
+                        painter = painterResource(mascotDrawable),
+                        contentDescription = coachName ?: "Motivational cat",
+                        modifier = Modifier.size(180.dp),
+                    )
+                    if (coachName != null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = coachName,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(14.dp))
             }
-            Text(
-                text = saying,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-            )
+            SpeechBubble(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = saying,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
         }
+    }
+}
+
+// -------------------------------------------------------------- speech bubble
+
+private val BUBBLE_CORNER_RADIUS = 16.dp
+private val BUBBLE_TAIL_WIDTH = 10.dp
+private val BUBBLE_TAIL_HEIGHT = 18.dp
+private val MASCOT_BUBBLE_SHAPE =
+    SpeechBubbleShape(cornerRadius = BUBBLE_CORNER_RADIUS, tailWidth = BUBBLE_TAIL_WIDTH, tailHeight = BUBBLE_TAIL_HEIGHT)
+
+/** A rounded, outlined panel styled like a cartoon speech bubble. */
+@Composable
+private fun SpeechBubble(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(MASCOT_BUBBLE_SHAPE)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(width = 1.5.dp, color = MaterialTheme.colorScheme.outlineVariant, shape = MASCOT_BUBBLE_SHAPE)
+            .padding(start = BUBBLE_TAIL_WIDTH + 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+    ) {
+        content()
+    }
+}
+
+/**
+ * A rounded rectangle with a small triangular tail on its left edge, centered
+ * vertically — the classic cartoon speech-bubble outline, pointing back
+ * toward whatever is speaking.
+ */
+private class SpeechBubbleShape(
+    private val cornerRadius: Dp,
+    private val tailWidth: Dp,
+    private val tailHeight: Dp,
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val radius = with(density) { cornerRadius.toPx() }
+        val tailW = with(density) { tailWidth.toPx() }
+        val tailH = with(density) { tailHeight.toPx() }
+        val bodyLeft = tailW
+
+        val path = Path().apply {
+            addRoundRect(
+                RoundRect(
+                    left = bodyLeft,
+                    top = 0f,
+                    right = size.width,
+                    bottom = size.height,
+                    cornerRadius = CornerRadius(radius, radius),
+                )
+            )
+            val tailCenterY = size.height / 2f
+            moveTo(bodyLeft, tailCenterY - tailH / 2f)
+            lineTo(0f, tailCenterY)
+            lineTo(bodyLeft, tailCenterY + tailH / 2f)
+            close()
+        }
+        return Outline.Generic(path)
     }
 }
 

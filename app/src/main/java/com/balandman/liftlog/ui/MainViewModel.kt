@@ -8,6 +8,8 @@ import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.balandman.liftlog.LiftLogApp
+import com.balandman.liftlog.data.CoachCatalog
+import com.balandman.liftlog.data.CoachTheme
 import com.balandman.liftlog.data.Difficulty
 import com.balandman.liftlog.data.Machine
 import com.balandman.liftlog.data.MachineGroup
@@ -61,6 +63,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Set when the user asked to pick or change the Google account. */
     private val _accountPickerRequest = MutableStateFlow(false)
     val accountPickerRequest: StateFlow<Boolean> = _accountPickerRequest.asStateFlow()
+
+    // ------------------------------------------------------------ gamification
+
+    val pawprintsBalance: StateFlow<Int> = repo.active.map { it.pawprintsBalance }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, repo.current().pawprintsBalance)
+
+    val pawprintsEarnedTotal: StateFlow<Int> = repo.active.map { it.pawprintsEarnedTotal }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, repo.current().pawprintsEarnedTotal)
+
+    val unlockedCoachIds: StateFlow<Set<Int>> = repo.active.map { it.unlockedCoachIds }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, repo.current().unlockedCoachIds)
+
+    val selectedCoachId: StateFlow<Int> = repo.active.map { it.selectedCoachId }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, repo.current().selectedCoachId)
+
+    val unlockedOutfits: StateFlow<Set<String>> = repo.active.map { it.unlockedOutfits }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, repo.current().unlockedOutfits)
+
+    val equippedOutfits: StateFlow<Map<Int, String>> = repo.active.map { it.equippedOutfits }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, repo.current().equippedOutfits)
+
+    fun unlockCoach(coachId: Int, cost: Int) {
+        val unlocked = repo.unlockCoach(coachId, cost)
+        _message.value = if (unlocked) {
+            "${CoachCatalog.byId(coachId)?.name ?: "Coach"} unlocked!"
+        } else {
+            "Not enough pawprints yet."
+        }
+    }
+
+    fun selectCoach(coachId: Int) = repo.selectCoach(coachId)
+
+    fun unlockOutfit(coachId: Int, theme: CoachTheme, cost: Int) {
+        val unlocked = repo.unlockOutfit(coachId, theme, cost)
+        _message.value = if (unlocked) "${theme.displayName} unlocked!" else "Not enough pawprints yet."
+    }
+
+    /** Pass null to switch a coach back to its base look. */
+    fun equipOutfit(coachId: Int, theme: CoachTheme?) = repo.equipOutfit(coachId, theme)
 
     private var autoSyncJob: Job? = null
 

@@ -89,7 +89,13 @@ object MotivationCatalog {
         return "${OPENERS.random(random)} ${CLOSERS.random(random)}"
     }
 
-    private fun personalizedPool(stats: MotivationStats): List<String> = buildList {
+    /**
+     * Not private: [CoachVoice] reuses this same stat-aware pool for every
+     * coach rather than duplicating it — the personalized lines (new record,
+     * streak, lifetime total, favorite machine) are shared, only the general
+     * opener/closer voice differs per coach.
+     */
+    fun personalizedPool(stats: MotivationStats): List<String> = buildList {
         if (stats.newRecordsToday.isNotEmpty()) {
             val (name, weight) = stats.newRecordsToday.random()
             NEW_RECORD_TEMPLATES.forEach { add(it(name, weight)) }

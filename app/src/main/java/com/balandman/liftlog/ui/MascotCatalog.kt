@@ -22,9 +22,26 @@ object MascotCatalog {
         }.getOrDefault(emptyList())
     }
 
+    /** mascot_01 -> coach id 1, and so on — a coach's base look before any outfit. */
+    private val byNumber: Map<Int, Int> by lazy {
+        runCatching {
+            R.drawable::class.java.fields
+                .mapNotNull { field ->
+                    val number = Regex("""^mascot_(\d+)$""").find(field.name)?.groupValues?.get(1)?.toIntOrNull()
+                    if (number == null) return@mapNotNull null
+                    val resId = runCatching { field.getInt(null) }.getOrNull() ?: return@mapNotNull null
+                    number to resId
+                }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
     val hasMascots: Boolean get() = ids.isNotEmpty()
 
     /** A random mascot drawable, or null until the first mascot_NN image exists. */
     @DrawableRes
     fun random(): Int? = ids.randomOrNull()
+
+    /** The specific coach's base portrait (mascot_NN), or null if not supplied. */
+    @DrawableRes
+    fun forNumber(number: Int): Int? = byNumber[number]
 }
